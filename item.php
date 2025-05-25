@@ -26,17 +26,28 @@ if (!$item) {
 }
 
 // Get bid history
-$bid_sql = "SELECT b.*, u.username 
+$bid_sql = "SELECT b.*, u.username,
+            CASE 
+                WHEN b.bid_amount = (SELECT MAX(bid_amount) FROM bids WHERE item_id = ?) THEN 1
+                ELSE 0
+            END as is_highest_bidder
             FROM bids b 
             JOIN users u ON b.user_id = u.user_id 
             WHERE b.item_id = ? 
             GROUP BY b.user_id
             ORDER BY b.bid_amount DESC 
-            LIMIT 10";
+            LIMIT 3";
 $bid_stmt = $conn->prepare($bid_sql);
-$bid_stmt->bind_param("i", $item_id);
+$bid_stmt->bind_param("ii", $item_id, $item_id);
 $bid_stmt->execute();
 $bid_history = $bid_stmt->get_result();
+
+// Get total number of bids
+$total_bids_sql = "SELECT COUNT(DISTINCT user_id) as total_bids FROM bids WHERE item_id = ?";
+$total_bids_stmt = $conn->prepare($total_bids_sql);
+$total_bids_stmt->bind_param("i", $item_id);
+$total_bids_stmt->execute();
+$total_bids = $total_bids_stmt->get_result()->fetch_assoc()['total_bids'];
 
 // Handle new bid
 $bid_error = '';
@@ -90,6 +101,39 @@ if (isset($_SESSION['user_id'])) {
     $watch_stmt->execute();
     $in_watchlist = $watch_stmt->get_result()->num_rows > 0;
 }
+
+// Get notifications for logged-in user
+$notifications = null;
+$unread_count = 0;
+$username = '';
+if (isset($_SESSION['user_id'])) {
+    // Get username
+    $user_sql = "SELECT username FROM users WHERE user_id = ?";
+    $user_stmt = $conn->prepare($user_sql);
+    $user_stmt->bind_param("i", $_SESSION['user_id']);
+    $user_stmt->execute();
+    $username = $user_stmt->get_result()->fetch_assoc()['username'];
+
+    // Get notifications
+    $notifications_sql = "SELECT n.*, f.title as item_title, f.image_url, f.current_price
+                         FROM notifications n 
+                         JOIN furniture_items f ON n.item_id = f.item_id 
+                         WHERE n.user_id = ? 
+                         ORDER BY n.created_at DESC 
+                         LIMIT 5";
+    $notifications_stmt = $conn->prepare($notifications_sql);
+    $notifications_stmt->bind_param("i", $_SESSION['user_id']);
+    $notifications_stmt->execute();
+    $notifications = $notifications_stmt->get_result();
+
+    // Count unread notifications
+    while ($notification = $notifications->fetch_assoc()) {
+        if (!$notification['is_read']) {
+            $unread_count++;
+        }
+    }
+    $notifications->data_seek(0); // Reset result pointer
+}
 ?>
 
 <!DOCTYPE html>
@@ -116,22 +160,95 @@ if (isset($_SESSION['user_id'])) {
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-light bg-light fixed-top">
         <div class="container">
-            <a class="navbar-brand" href="index.php">Furniture Bidding</a>
+            <a class="navbar-brand" href="index.php">
+                <i class="fas fa-couch me-2"></i>Furniture Bidding
+            </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
+                <ul class="navbar-nav ms-auto align-items-center">
+                    <li class="nav-item">
+                        <a class="nav-link" href="index.php">
+                            <i class="fas fa-home me-1"></i>Home
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="furniture_list.php">
+                            <i class="fas fa-list me-1"></i>Browse Furniture
+                        </a>
+                    </li>
                     <?php if (isset($_SESSION['user_id'])): ?>
-                        <li class="nav-item">
-                            <a class="nav-link" href="dashboard.php">Dashboard</a>
+                        <!-- Notifications Dropdown -->
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="notificationsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-bell me-1"></i>Notifications
+                                <?php if ($unread_count > 0): ?>
+                                    <span class="badge bg-danger notification-badge"><?php echo $unread_count; ?></span>
+                                <?php endif; ?>
+                            </a>
+                            <div class="dropdown-menu dropdown-menu-end notification-dropdown" aria-labelledby="notificationsDropdown">
+                                <div class="dropdown-header d-flex justify-content-between align-items-center">
+                                    <span><i class="fas fa-bell me-2"></i>Notifications</span>
+                                    <?php if ($unread_count > 0): ?>
+                                        <span class="badge bg-danger"><?php echo $unread_count; ?> new</span>
+                                    <?php endif; ?>
+                                </div>
+                                <?php if ($notifications && $notifications->num_rows > 0): ?>
+                                    <?php while ($notification = $notifications->fetch_assoc()): ?>
+                                        <a class="dropdown-item <?php echo !$notification['is_read'] ? 'unread' : ''; ?>" 
+                                           href="item.php?id=<?php echo $notification['item_id']; ?>"
+                                           onclick="markNotificationRead(<?php echo $notification['notification_id']; ?>)">
+                                            <div class="d-flex align-items-center">
+                                                <img src="<?php echo htmlspecialchars($notification['image_url'] ?: 'assets/images/no-image.jpg'); ?>" 
+                                                     class="rounded me-2" 
+                                                     alt="<?php echo htmlspecialchars($notification['item_title']); ?>"
+                                                     style="width: 40px; height: 40px; object-fit: cover;">
+                                                <div class="flex-grow-1">
+                                                    <p class="mb-1" style="font-size: 0.9rem;">
+                                                        <?php echo htmlspecialchars($notification['message']); ?>
+                                                    </p>
+                                                    <small class="text-muted">
+                                                        <i class="far fa-clock me-1"></i>
+                                                        <?php echo date('M d, Y h:i A', strtotime($notification['created_at'])); ?>
+                                                    </small>
+                                                </div>
+                                            </div>
+                                        </a>
+                                    <?php endwhile; ?>
+                                    <div class="dropdown-divider"></div>
+                                    <a class="dropdown-item text-center text-primary" href="notifications.php">
+                                        <i class="fas fa-list-ul me-1"></i>View All Notifications
+                                    </a>
+                                <?php else: ?>
+                                    <div class="dropdown-item text-center text-muted py-3">
+                                        <i class="fas fa-bell-slash me-2"></i>No notifications
+                                    </div>
+                                <?php endif; ?>
+                            </div>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="logout.php">Logout</a>
+                            <a class="nav-link" href="dashboard.php">
+                                <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                            </a>
+                        </li>
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-user me-1"></i><?php echo htmlspecialchars($username); ?>
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                                <li><a class="dropdown-item" href="profile.php"><i class="fas fa-user-circle me-2"></i>Profile</a></li>
+                                <li><a class="dropdown-item" href="my_bids.php"><i class="fas fa-gavel me-2"></i>My Bids</a></li>
+                                <li><a class="dropdown-item" href="dashboard.php?tab=watchlist"><i class="fas fa-heart me-2"></i>Watchlist</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item text-danger" href="logout.php"><i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
+                            </ul>
                         </li>
                     <?php else: ?>
                         <li class="nav-item">
-                            <a class="nav-link" href="login.php">Login/Register</a>
+                            <a class="nav-link btn btn-outline-primary btn-sm px-3" href="login.php">
+                                <i class="fas fa-sign-in-alt me-1"></i>Login
+                            </a>
                         </li>
                     <?php endif; ?>
                 </ul>
@@ -187,13 +304,19 @@ if (isset($_SESSION['user_id'])) {
 
                         <?php if (isset($_SESSION['user_id'])): ?>
                             <?php if (strtotime($item['end_time']) > time()): ?>
-                                <form method="POST" class="mb-3">
-                                    <div class="input-group mb-3">
-                                        <span class="input-group-text">₱</span>
-                                        <input type="number" name="bid_amount" class="form-control" step="0.01" min="<?php echo $item['current_price'] + 0.01; ?>" required>
-                                        <button type="submit" class="btn btn-primary">Place Bid</button>
+                                <?php if ($item['seller_id'] == $_SESSION['user_id']): ?>
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle me-2"></i>You cannot bid on your own item
                                     </div>
-                                </form>
+                                <?php else: ?>
+                                    <form method="POST" class="mb-3">
+                                        <div class="input-group mb-3">
+                                            <span class="input-group-text">₱</span>
+                                            <input type="number" name="bid_amount" class="form-control" step="0.01" min="<?php echo $item['current_price'] + 0.01; ?>" required>
+                                            <button type="submit" class="btn btn-primary">Place Bid</button>
+                                        </div>
+                                    </form>
+                                <?php endif; ?>
                                 
                                 <!-- Watchlist Toggle -->
                                 <form method="POST" action="<?php echo $in_watchlist ? 'remove_watchlist.php' : 'add_watchlist.php'; ?>" class="mb-3">
@@ -220,16 +343,41 @@ if (isset($_SESSION['user_id'])) {
                                 <ul class="list-group list-group-flush">
                                     <?php while ($bid = $bid_history->fetch_assoc()): ?>
                                         <li class="list-group-item">
-                                            <strong>₱<?php echo number_format($bid['bid_amount'], 2); ?></strong>
-                                            by <?php echo htmlspecialchars($bid['username']); ?><br>
-                                            <small class="text-muted">
-                                                <?php echo date('M d, Y h:i A', strtotime($bid['bid_time'])); ?>
-                                            </small>
+                                            <div class="d-flex justify-content-between align-items-start">
+                                                <div>
+                                                    <strong class="d-block">₱<?php echo number_format($bid['bid_amount'], 2); ?></strong>
+                                                    <span class="d-block">
+                                                        by <?php echo htmlspecialchars($bid['username']); ?>
+                                                        <?php if ($bid['is_highest_bidder']): ?>
+                                                            <span class="badge bg-success ms-2">
+                                                                <i class="fas fa-trophy me-1"></i>Highest Bidder
+                                                            </span>
+                                                        <?php else: ?>
+                                                            <span class="badge bg-secondary ms-2">
+                                                                <i class="fas fa-arrow-down me-1"></i>Outbid
+                                                            </span>
+                                                        <?php endif; ?>
+                                                    </span>
+                                                    <small class="text-muted d-block">
+                                                        <i class="far fa-clock me-1"></i>
+                                                        <?php echo date('M d, Y h:i A', strtotime($bid['bid_time'])); ?>
+                                                    </small>
+                                                </div>
+                                            </div>
                                         </li>
                                     <?php endwhile; ?>
                                 </ul>
+                                <?php if ($total_bids > 3): ?>
+                                    <div class="text-center mt-3">
+                                        <a href="bid_history.php?item_id=<?php echo $item_id; ?>" class="btn btn-outline-primary btn-sm">
+                                            <i class="fas fa-list me-1"></i>See All Bids (<?php echo $total_bids; ?>)
+                                        </a>
+                                    </div>
+                                <?php endif; ?>
                             <?php else: ?>
-                                <p class="text-muted">No bids yet</p>
+                                <p class="text-muted text-center py-3">
+                                    <i class="fas fa-gavel me-2"></i>No bids yet
+                                </p>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -239,5 +387,82 @@ if (isset($_SESSION['user_id'])) {
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        function markNotificationRead(notificationId) {
+            $.post('mark_notifications_read.php', {
+                notification_id: notificationId
+            });
+        }
+
+        // Update notifications every 30 seconds
+        setInterval(function() {
+            if (document.getElementById('notificationsDropdown')) {
+                $.get('get_notifications.php', function(data) {
+                    // Update notification count
+                    const unreadCount = data.unread_count;
+                    const badge = document.querySelector('.notification-badge');
+                    if (unreadCount > 0) {
+                        if (badge) {
+                            badge.textContent = unreadCount;
+                        } else {
+                            const newBadge = document.createElement('span');
+                            newBadge.className = 'badge bg-danger notification-badge';
+                            newBadge.textContent = unreadCount;
+                            document.getElementById('notificationsDropdown').appendChild(newBadge);
+                        }
+                    } else if (badge) {
+                        badge.remove();
+                    }
+
+                    // Update notification list
+                    const dropdownMenu = document.querySelector('.notification-dropdown');
+                    if (dropdownMenu) {
+                        let notificationsHtml = `
+                            <div class="dropdown-header d-flex justify-content-between align-items-center">
+                                <span><i class="fas fa-bell me-2"></i>Notifications</span>
+                                ${unreadCount > 0 ? `<span class="badge bg-danger">${unreadCount} new</span>` : ''}
+                            </div>`;
+
+                        if (data.notifications && data.notifications.length > 0) {
+                            data.notifications.forEach(notification => {
+                                notificationsHtml += `
+                                    <a class="dropdown-item ${!notification.is_read ? 'unread' : ''}" 
+                                       href="item.php?id=${notification.item_id}"
+                                       onclick="markNotificationRead(${notification.notification_id})">
+                                        <div class="d-flex align-items-center">
+                                            <img src="${notification.image_url || 'assets/images/no-image.jpg'}" 
+                                                 class="rounded me-2" 
+                                                 alt="${notification.item_title}"
+                                                 style="width: 40px; height: 40px; object-fit: cover;">
+                                            <div class="flex-grow-1">
+                                                <p class="mb-1" style="font-size: 0.9rem;">
+                                                    ${notification.message}
+                                                </p>
+                                                <small class="text-muted">
+                                                    <i class="far fa-clock me-1"></i>
+                                                    ${new Date(notification.created_at).toLocaleString()}
+                                                </small>
+                                            </div>
+                                        </div>
+                                    </a>`;
+                            });
+                            notificationsHtml += `
+                                <div class="dropdown-divider"></div>
+                                <a class="dropdown-item text-center text-primary" href="notifications.php">
+                                    <i class="fas fa-list-ul me-1"></i>View All Notifications
+                                </a>`;
+                        } else {
+                            notificationsHtml += `
+                                <div class="dropdown-item text-center text-muted py-3">
+                                    <i class="fas fa-bell-slash me-2"></i>No notifications
+                                </div>`;
+                        }
+                        dropdownMenu.innerHTML = notificationsHtml;
+                    }
+                });
+            }
+        }, 30000);
+    </script>
 </body>
 </html> 
