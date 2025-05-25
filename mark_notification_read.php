@@ -1,36 +1,49 @@
 <?php
+require_once 'includes/config.php';
 session_start();
-require_once 'config/database.php';
 
 // Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['error' => 'Unauthorized']);
-    exit();
+    echo json_encode(['success' => false, 'message' => 'User not logged in']);
+    exit;
 }
 
+// Check if notification_id is provided
+if (!isset($_POST['notification_id'])) {
+    echo json_encode(['success' => false, 'message' => 'Notification ID not provided']);
+    exit;
+}
+
+$notification_id = intval($_POST['notification_id']);
 $user_id = $_SESSION['user_id'];
 
-// Get notification IDs from POST request
-$notification_ids = isset($_POST['notification_ids']) ? $_POST['notification_ids'] : [];
-
-// If no specific notifications provided, mark all as read
-if (empty($notification_ids)) {
-    $sql = "UPDATE notifications SET is_read = 1 WHERE user_id = ?";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("i", $user_id);
-} else {
-    // Convert array to comma-separated string
-    $id_string = implode(',', array_map('intval', $notification_ids));
-    $sql = "UPDATE notifications SET is_read = 1 WHERE user_id = ? AND notification_id IN ($id_string)";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("i", $user_id);
-}
+// Update notification status
+$update_query = "UPDATE notifications SET is_read = 1 
+                WHERE id = ? AND user_id = ?";
+$stmt = $conn->prepare($update_query);
+$stmt->bind_param("ii", $notification_id, $user_id);
 
 if ($stmt->execute()) {
-    echo json_encode(['success' => true]);
+    // Get updated unread count
+    $count_query = "SELECT COUNT(*) as unread_count 
+                    FROM notifications 
+                    WHERE user_id = ? AND is_read = 0";
+    $stmt = $conn->prepare($count_query);
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $unread_count = $result->fetch_assoc()['unread_count'];
+
+    echo json_encode([
+        'success' => true,
+        'unread_count' => $unread_count
+    ]);
 } else {
-    http_response_code(500);
-    echo json_encode(['error' => 'Failed to mark notifications as read']);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Failed to mark notification as read'
+    ]);
 }
+
+$conn->close();
 ?> 

@@ -86,17 +86,19 @@ $expired_result = $conn->query($expired_sql);
                             <i class="fas fa-envelope me-1"></i>Contact
                         </a>
                     </li>
-                    <?php if(isset($_SESSION['user_id'])): ?>
-                        <li class="nav-item">
-                            <a class="nav-link" href="dashboard.php">
-                                <i class="fas fa-tachometer-alt me-1"></i>Dashboard
-                            </a>
-                        </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="furniture_list.php">
+                            <i class="fas fa-list me-1"></i>Browse Furniture
+                        </a>
+                    </li>
+                    <?php if (isset($_SESSION['user_id'])): ?>
+                        <?php include 'includes/notifications.php'; ?>
                         <li class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                                 <i class="fas fa-user me-1"></i><?php echo htmlspecialchars($username); ?>
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                                <li><a class="dropdown-item" href="dashboard.php"><i class="fas fa-tachometer-alt me-2"></i>Dashboard</a></li>
                                 <li><a class="dropdown-item" href="profile.php"><i class="fas fa-user-circle me-2"></i>Profile</a></li>
                                 <li><a class="dropdown-item" href="dashboard.php"><i class="fas fa-gavel me-2"></i>My Bids</a></li>
                                 <li><a class="dropdown-item" href="dashboard.php?tab=watchlist"><i class="fas fa-heart me-2"></i>Watchlist</a></li>

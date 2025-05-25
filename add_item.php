@@ -8,6 +8,14 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
+// Get username for the logged-in user
+$username = '';
+$user_sql = "SELECT username FROM users WHERE user_id = ?";
+$user_stmt = $conn->prepare($user_sql);
+$user_stmt->bind_param("i", $_SESSION['user_id']);
+$user_stmt->execute();
+$username = $user_stmt->get_result()->fetch_assoc()['username'];
+
 // Get categories for dropdown
 $categories_sql = "SELECT * FROM categories GROUP BY name ORDER BY name";
 $categories_result = $conn->query($categories_sql);
@@ -96,16 +104,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             <i class="fas fa-list me-1"></i>Browse Furniture
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="dashboard.php">
-                            <i class="fas fa-tachometer-alt me-1"></i>Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" href="add_item.php">
-                            <i class="fas fa-plus-circle me-1"></i>Add Item
-                        </a>
-                    </li>
+                    <?php if (isset($_SESSION['user_id'])): ?>
+                        <?php include 'includes/notifications.php'; ?>
+                        <li class="nav-item">
+                            <a class="nav-link active" href="add_item.php">
+                                <i class="fas fa-plus-circle me-1"></i>Add Item
+                            </a>
+                        </li>
+                    <?php endif; ?>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="fas fa-user me-1"></i><?php echo htmlspecialchars($username); ?>

@@ -179,57 +179,10 @@ if (isset($_SESSION['user_id'])) {
                         </a>
                     </li>
                     <?php if (isset($_SESSION['user_id'])): ?>
-                        <!-- Notifications Dropdown -->
-                        <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" id="notificationsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fas fa-bell me-1"></i>Notifications
-                                <?php if ($unread_count > 0): ?>
-                                    <span class="badge bg-danger notification-badge"><?php echo $unread_count; ?></span>
-                                <?php endif; ?>
-                            </a>
-                            <div class="dropdown-menu dropdown-menu-end notification-dropdown" aria-labelledby="notificationsDropdown">
-                                <div class="dropdown-header d-flex justify-content-between align-items-center">
-                                    <span><i class="fas fa-bell me-2"></i>Notifications</span>
-                                    <?php if ($unread_count > 0): ?>
-                                        <span class="badge bg-danger"><?php echo $unread_count; ?> new</span>
-                                    <?php endif; ?>
-                                </div>
-                                <?php if ($notifications && $notifications->num_rows > 0): ?>
-                                    <?php while ($notification = $notifications->fetch_assoc()): ?>
-                                        <a class="dropdown-item <?php echo !$notification['is_read'] ? 'unread' : ''; ?>" 
-                                           href="item.php?id=<?php echo $notification['item_id']; ?>"
-                                           onclick="markNotificationRead(<?php echo $notification['notification_id']; ?>)">
-                                            <div class="d-flex align-items-center">
-                                                <img src="<?php echo htmlspecialchars($notification['image_url'] ?: 'assets/images/no-image.jpg'); ?>" 
-                                                     class="rounded me-2" 
-                                                     alt="<?php echo htmlspecialchars($notification['item_title']); ?>"
-                                                     style="width: 40px; height: 40px; object-fit: cover;">
-                                                <div class="flex-grow-1">
-                                                    <p class="mb-1" style="font-size: 0.9rem;">
-                                                        <?php echo htmlspecialchars($notification['message']); ?>
-                                                    </p>
-                                                    <small class="text-muted">
-                                                        <i class="far fa-clock me-1"></i>
-                                                        <?php echo date('M d, Y h:i A', strtotime($notification['created_at'])); ?>
-                                                    </small>
-                                                </div>
-                                            </div>
-                                        </a>
-                                    <?php endwhile; ?>
-                                    <div class="dropdown-divider"></div>
-                                    <a class="dropdown-item text-center text-primary" href="notifications.php">
-                                        <i class="fas fa-list-ul me-1"></i>View All Notifications
-                                    </a>
-                                <?php else: ?>
-                                    <div class="dropdown-item text-center text-muted py-3">
-                                        <i class="fas fa-bell-slash me-2"></i>No notifications
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                        </li>
+                        <?php include 'includes/notifications.php'; ?>
                         <li class="nav-item">
-                            <a class="nav-link" href="dashboard.php">
-                                <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                            <a class="nav-link" href="add_item.php">
+                                <i class="fas fa-plus-circle me-1"></i>Add Item
                             </a>
                         </li>
                         <li class="nav-item dropdown">
