@@ -1,0 +1,162 @@
+/* Navigation */
+.navbar {
+    background-color: rgba(255, 255, 255, 0.95) !important;
+}
+
+/* Hero Section */
+.hero-section {
+    background: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)),
+                url('../images/landing.jpg') center/cover no-repeat;
+    height: 600px;
+    color: white;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    margin-top: 56px;
+}
+
+.hero-content {
+    position: relative;
+    z-index: 2;
+}
+
+.hero-content h1 {
+    font-size: 3.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.hero-content p {
+    font-size: 1.2rem;
+    margin-bottom: 2rem;
+}
+
+/* Featured Items Section */
+.featured-items {
+    padding: 4rem 0;
+    background-color: #f8f9fa;
+}
+
+/* Card Styles */
+.furniture-card {
+    border: none;
+    border-radius: 15px;
+    overflow: hidden;
+    transition: transform 0.3s;
+    margin-bottom: 30px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    height: 100%;
+}
+
+.furniture-card:hover {
+    transform: translateY(-5px);
+}
+
+.furniture-image {
+    height: 250px;
+    object-fit: cover;
+    width: 100%;
+}
+
+.card-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+.card-footer {
+    background: transparent;
+    border-top: none;
+    margin-top: auto;
+}
+
+.time-left {
+    font-size: 0.9rem;
+    color: #dc3545;
+}
+
+.current-price {
+    font-size: 1.25rem;
+    font-weight: bold;
+    color: #28a745;
+}
+
+.seller-info {
+    font-size: 0.9rem;
+    color: #6c757d;
+}
+
+/* How It Works Section */
+.how-it-works {
+    padding: 4rem 0;
+    background-color: white;
+}
+
+.step-card {
+    text-align: center;
+    padding: 2rem;
+}
+
+.step-card i {
+    font-size: 3rem;
+    color: #0d6efd;
+    margin-bottom: 1rem;
+}
+
+/* Call to Action Section */
+.cta-section {
+    background-color: #0d6efd;
+    color: white;
+    padding: 4rem 0;
+    text-align: center;
+}
+
+/* Dashboard Styles */
+.dashboard-stats {
+    background-color: #f8f9fa;
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+}
+
+.stat-card {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.nav-pills .nav-link.active {
+    background-color: #0d6efd;
+}
+
+/* Listing Card Styles */
+.listing-card {
+    margin-bottom: 20px;
+    transition: transform 0.2s;
+    height: 100%;
+}
+
+.listing-card:hover {
+    transform: translateY(-5px);
+}
+
+.listing-image {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+    border-top-left-radius: calc(0.375rem - 1px);
+    border-top-right-radius: calc(0.375rem - 1px);
+}
+
+.card-wrapper {
+    margin-bottom: 30px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.card-body .btn {
+    margin-top: auto;
+}
