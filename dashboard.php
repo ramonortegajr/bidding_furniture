@@ -17,10 +17,15 @@ $stmt->execute();
 $user = $stmt->get_result()->fetch_assoc();
 
 // Get user's active bids
-$bids_sql = "SELECT b.*, f.title, f.current_price, f.end_time 
+$bids_sql = "SELECT b.*, f.title, f.current_price, f.end_time, f.image_url,
+             (SELECT COUNT(*) FROM bids WHERE item_id = f.item_id) as total_bids,
+             CASE 
+                WHEN f.current_price = b.bid_amount THEN 1 
+                ELSE 0 
+             END as is_highest_bidder
              FROM bids b 
              JOIN furniture_items f ON b.item_id = f.item_id 
-             WHERE b.bidder_id = ? AND b.status = 'active'
+             WHERE b.user_id = ? AND f.status = 'active'
              ORDER BY b.bid_time DESC";
 $bids_stmt = $conn->prepare($bids_sql);
 $bids_stmt->bind_param("i", $user_id);
@@ -42,6 +47,43 @@ $watchlist_stmt = $conn->prepare($watchlist_sql);
 $watchlist_stmt->bind_param("i", $user_id);
 $watchlist_stmt->execute();
 $watchlist_items = $watchlist_stmt->get_result();
+
+// Get bidders for seller's items
+$bidders_sql = "SELECT b.*, f.title, f.current_price, f.end_time, f.image_url, 
+                u.username as bidder_name, u.email as bidder_email,
+                (SELECT COUNT(*) FROM bids WHERE item_id = f.item_id) as total_bids
+                FROM furniture_items f 
+                LEFT JOIN bids b ON f.item_id = b.item_id 
+                LEFT JOIN users u ON b.user_id = u.user_id
+                WHERE f.seller_id = ? AND f.status = 'active'
+                ORDER BY f.item_id, b.bid_amount DESC";
+$bidders_stmt = $conn->prepare($bidders_sql);
+$bidders_stmt->bind_param("i", $user_id);
+$bidders_stmt->execute();
+$bidders_result = $bidders_stmt->get_result();
+
+// Group bidders by item
+$items_with_bids = [];
+while ($row = $bidders_result->fetch_assoc()) {
+    if (!isset($items_with_bids[$row['item_id']])) {
+        $items_with_bids[$row['item_id']] = [
+            'title' => $row['title'],
+            'current_price' => $row['current_price'],
+            'end_time' => $row['end_time'],
+            'image_url' => $row['image_url'],
+            'total_bids' => $row['total_bids'],
+            'bidders' => []
+        ];
+    }
+    if ($row['bidder_name']) {
+        $items_with_bids[$row['item_id']]['bidders'][] = [
+            'username' => $row['bidder_name'],
+            'email' => $row['bidder_email'],
+            'bid_amount' => $row['bid_amount'],
+            'bid_time' => $row['bid_time']
+        ];
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -53,6 +95,100 @@ $watchlist_items = $watchlist_stmt->get_result();
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="assets/css/style.css">
+    <style>
+        .dashboard-stats {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .nav-pills .nav-link.active {
+            background-color: #0d6efd;
+        }
+        .listing-card {
+            margin-bottom: 20px;
+            transition: transform 0.2s;
+            height: 100%;
+            border: none;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .listing-card:hover {
+            transform: translateY(-5px);
+        }
+        .listing-image {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-top-left-radius: calc(0.375rem - 1px);
+            border-top-right-radius: calc(0.375rem - 1px);
+        }
+        .card-wrapper {
+            margin-bottom: 30px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+        .card-body {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .card-body .btn {
+            margin-top: auto;
+        }
+        .bid-status {
+            margin: -5px 0 10px 0;
+        }
+        .badge {
+            font-size: 0.85rem;
+            padding: 0.35em 0.65em;
+        }
+        .badge i {
+            margin-right: 3px;
+        }
+        .time-left {
+            font-size: 0.9rem;
+            color: #dc3545;
+            margin-bottom: 1rem;
+        }
+        .alert {
+            border-radius: 15px;
+            padding: 2rem;
+        }
+        .table {
+            margin-bottom: 0;
+        }
+        .table th {
+            font-weight: 600;
+            background-color: #f8f9fa;
+        }
+        .table td, .table th {
+            padding: 1rem;
+            vertical-align: middle;
+        }
+        .card-header {
+            border-bottom: 1px solid rgba(0,0,0,.1);
+            padding: 1rem;
+        }
+        .card-footer {
+            border-top: 1px solid rgba(0,0,0,.1);
+            padding: 1rem;
+        }
+        .badge {
+            font-weight: 500;
+        }
+        .table-hover tbody tr:hover {
+            background-color: rgba(13, 110, 253, 0.05);
+        }
+    </style>
 </head>
 <body>
     <!-- Navigation -->
@@ -131,6 +267,9 @@ $watchlist_items = $watchlist_stmt->get_result();
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="pills-watchlist-tab" data-bs-toggle="pill" data-bs-target="#pills-watchlist" type="button">Watchlist</button>
                     </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="pills-bidders-tab" data-bs-toggle="pill" data-bs-target="#pills-bidders" type="button">Item Bidders</button>
+                    </li>
                 </ul>
 
                 <div class="tab-content" id="pills-tabContent">
@@ -141,15 +280,42 @@ $watchlist_items = $watchlist_stmt->get_result();
                                 <?php while ($bid = $active_bids->fetch_assoc()): ?>
                                     <div class="col-md-6 col-lg-4 card-wrapper">
                                         <div class="card listing-card">
+                                            <?php if ($bid['image_url']): ?>
+                                                <img src="<?php echo htmlspecialchars($bid['image_url']); ?>" class="listing-image" alt="<?php echo htmlspecialchars($bid['title']); ?>">
+                                            <?php else: ?>
+                                                <img src="assets/images/no-image.jpg" class="listing-image" alt="No image available">
+                                            <?php endif; ?>
                                             <div class="card-body">
                                                 <h5 class="card-title"><?php echo htmlspecialchars($bid['title']); ?></h5>
+                                                <div class="bid-status mb-3">
+                                                    <?php if ($bid['is_highest_bidder']): ?>
+                                                        <span class="badge bg-success">
+                                                            <i class="fas fa-trophy"></i> Highest Bidder
+                                                        </span>
+                                                    <?php else: ?>
+                                                        <span class="badge bg-warning text-dark">
+                                                            <i class="fas fa-exclamation-circle"></i> Outbid
+                                                        </span>
+                                                    <?php endif; ?>
+                                                </div>
                                                 <p class="card-text">
-                                                    <strong>Your Bid:</strong> ₱<?php echo number_format($bid['bid_amount'], 2); ?><br>
-                                                    <strong>Current Price:</strong> ₱<?php echo number_format($bid['current_price'], 2); ?><br>
-                                                    <strong>Ends:</strong> <?php echo date('M d, Y H:i', strtotime($bid['end_time'])); ?>
+                                                    <span class="d-block mb-2">
+                                                        <strong>Your Bid:</strong> 
+                                                        <span class="text-primary">₱<?php echo number_format($bid['bid_amount'], 2); ?></span>
+                                                    </span>
+                                                    <span class="d-block mb-2">
+                                                        <strong>Current Price:</strong> 
+                                                        <span class="text-success">₱<?php echo number_format($bid['current_price'], 2); ?></span>
+                                                    </span>
+                                                    <span class="badge bg-info">
+                                                        <i class="fas fa-gavel"></i> <?php echo $bid['total_bids']; ?> total bid<?php echo $bid['total_bids'] != 1 ? 's' : ''; ?>
+                                                    </span>
+                                                </p>
+                                                <p class="time-left">
+                                                    <i class="fas fa-clock"></i> Ends: <?php echo date('M d, Y h:i A', strtotime($bid['end_time'])); ?>
                                                 </p>
                                                 <div class="mt-auto">
-                                                    <a href="item.php?id=<?php echo $bid['item_id']; ?>" class="btn btn-primary">View Item</a>
+                                                    <a href="item.php?id=<?php echo $bid['item_id']; ?>" class="btn btn-primary w-100">View Item</a>
                                                 </div>
                                             </div>
                                         </div>
@@ -157,7 +323,13 @@ $watchlist_items = $watchlist_stmt->get_result();
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <div class="col-12">
-                                    <p class="text-center">You haven't placed any bids yet.</p>
+                                    <div class="alert alert-info text-center">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        You haven't placed any bids yet.
+                                        <div class="mt-3">
+                                            <a href="furniture_list.php" class="btn btn-primary">Browse Furniture</a>
+                                        </div>
+                                    </div>
                                 </div>
                             <?php endif; ?>
                         </div>
@@ -234,6 +406,110 @@ $watchlist_items = $watchlist_stmt->get_result();
                             <?php else: ?>
                                 <div class="col-12">
                                     <p class="text-center">Your watchlist is empty.</p>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
+                    <!-- Item Bidders Tab -->
+                    <div class="tab-pane fade" id="pills-bidders">
+                        <div class="row">
+                            <?php if (!empty($items_with_bids)): ?>
+                                <?php foreach ($items_with_bids as $item_id => $item): ?>
+                                    <div class="col-12 mb-4">
+                                        <div class="card">
+                                            <div class="card-header bg-white">
+                                                <div class="row align-items-center">
+                                                    <div class="col-auto">
+                                                        <?php if ($item['image_url']): ?>
+                                                            <img src="<?php echo htmlspecialchars($item['image_url']); ?>" 
+                                                                 class="rounded" 
+                                                                 style="width: 100px; height: 100px; object-fit: cover;" 
+                                                                 alt="<?php echo htmlspecialchars($item['title']); ?>">
+                                                        <?php else: ?>
+                                                            <img src="assets/images/no-image.jpg" 
+                                                                 class="rounded" 
+                                                                 style="width: 100px; height: 100px; object-fit: cover;" 
+                                                                 alt="No image available">
+                                                        <?php endif; ?>
+                                                    </div>
+                                                    <div class="col">
+                                                        <h5 class="mb-0"><?php echo htmlspecialchars($item['title']); ?></h5>
+                                                        <p class="text-muted mb-0">
+                                                            Current Price: ₱<?php echo number_format($item['current_price'], 2); ?><br>
+                                                            <span class="badge bg-info">
+                                                                <i class="fas fa-gavel"></i> <?php echo $item['total_bids']; ?> total bid<?php echo $item['total_bids'] != 1 ? 's' : ''; ?>
+                                                            </span>
+                                                            <small class="text-danger ms-2">
+                                                                <i class="fas fa-clock"></i> Ends: <?php echo date('M d, Y h:i A', strtotime($item['end_time'])); ?>
+                                                            </small>
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="card-body p-0">
+                                                <?php if (!empty($item['bidders'])): ?>
+                                                    <div class="table-responsive">
+                                                        <table class="table table-hover mb-0">
+                                                            <thead class="table-light">
+                                                                <tr>
+                                                                    <th>Bidder</th>
+                                                                    <th>Email</th>
+                                                                    <th>Bid Amount</th>
+                                                                    <th>Bid Time</th>
+                                                                    <th>Status</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                <?php foreach ($item['bidders'] as $index => $bidder): ?>
+                                                                    <tr>
+                                                                        <td><?php echo htmlspecialchars($bidder['username']); ?></td>
+                                                                        <td><?php echo htmlspecialchars($bidder['email']); ?></td>
+                                                                        <td class="<?php echo $index === 0 ? 'text-success fw-bold' : ''; ?>">
+                                                                            ₱<?php echo number_format($bidder['bid_amount'], 2); ?>
+                                                                        </td>
+                                                                        <td><?php echo date('M d, Y h:i A', strtotime($bidder['bid_time'])); ?></td>
+                                                                        <td>
+                                                                            <?php if ($index === 0): ?>
+                                                                                <span class="badge bg-success">
+                                                                                    <i class="fas fa-trophy"></i> Highest Bidder
+                                                                                </span>
+                                                                            <?php else: ?>
+                                                                                <span class="badge bg-secondary">
+                                                                                    <i class="fas fa-chart-line"></i> Outbid
+                                                                                </span>
+                                                                            <?php endif; ?>
+                                                                        </td>
+                                                                    </tr>
+                                                                <?php endforeach; ?>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                <?php else: ?>
+                                                    <div class="text-center py-4">
+                                                        <p class="text-muted mb-0">No bids yet on this item.</p>
+                                                    </div>
+                                                <?php endif; ?>
+                                            </div>
+                                            <div class="card-footer bg-white">
+                                                <a href="item.php?id=<?php echo $item_id; ?>" class="btn btn-primary btn-sm">
+                                                    <i class="fas fa-eye"></i> View Item Details
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <div class="col-12">
+                                    <div class="alert alert-info text-center">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        You haven't listed any items for auction yet.
+                                        <div class="mt-3">
+                                            <a href="add_item.php" class="btn btn-primary">
+                                                <i class="fas fa-plus"></i> Add New Listing
+                                            </a>
+                                        </div>
+                                    </div>
                                 </div>
                             <?php endif; ?>
                         </div>

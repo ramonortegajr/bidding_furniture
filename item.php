@@ -182,7 +182,7 @@ if (isset($_SESSION['user_id'])) {
                         <h2 class="text-primary mb-3">₱<?php echo number_format($item['current_price'], 2); ?></h2>
                         <p class="text-muted">
                             Starting Price: ₱<?php echo number_format($item['starting_price'], 2); ?><br>
-                            Auction Ends: <?php echo date('M d, Y H:i', strtotime($item['end_time'])); ?>
+                            Auction Ends: <?php echo date('M d, Y h:i A', strtotime($item['end_time'])); ?>
                         </p>
 
                         <?php if (isset($_SESSION['user_id'])): ?>
@@ -223,7 +223,7 @@ if (isset($_SESSION['user_id'])) {
                                             <strong>₱<?php echo number_format($bid['bid_amount'], 2); ?></strong>
                                             by <?php echo htmlspecialchars($bid['username']); ?><br>
                                             <small class="text-muted">
-                                                <?php echo date('M d, Y H:i', strtotime($bid['bid_time'])); ?>
+                                                <?php echo date('M d, Y h:i A', strtotime($bid['bid_time'])); ?>
                                             </small>
                                         </li>
                                     <?php endwhile; ?>

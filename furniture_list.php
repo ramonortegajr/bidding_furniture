@@ -43,12 +43,18 @@ $sort = isset($_GET['sort']) && array_key_exists($_GET['sort'], $sort_options)
     : 'created_at DESC';
 
 // Construct and execute query
-$sql = "SELECT f.*, c.name as category_name, u.username as seller_name 
+$sql = "SELECT f.*, c.name as category_name, u.username as seller_name,
+        (SELECT COUNT(*) FROM bids b WHERE b.item_id = f.item_id) as bid_count,
+        (SELECT MAX(b2.bid_amount) FROM bids b2 WHERE b2.item_id = f.item_id AND b2.user_id = ?) as user_bid 
         FROM furniture_items f 
         JOIN categories c ON f.category_id = c.category_id 
         JOIN users u ON f.seller_id = u.user_id
         WHERE " . implode(" AND ", $where_conditions) . 
         " ORDER BY " . $sort;
+
+// Add user_id to the beginning of params array
+array_unshift($params, isset($_SESSION['user_id']) ? $_SESSION['user_id'] : 0);
+$types = "i" . $types; // Add integer type for user_id
 
 $stmt = $conn->prepare($sql);
 if (!empty($params)) {
@@ -84,6 +90,21 @@ $result = $stmt->get_result();
             padding: 20px;
             border-radius: 10px;
             margin-bottom: 20px;
+        }
+        .badge.bg-info {
+            font-size: 0.85rem;
+            padding: 0.35em 0.65em;
+            margin: 5px 0;
+            background-color: #0dcaf0 !important;
+        }
+        .badge.bg-success {
+            font-size: 0.85rem;
+            padding: 0.35em 0.65em;
+            margin: 5px 3px;
+            background-color: #198754 !important;
+        }
+        .badge i {
+            margin-right: 3px;
         }
     </style>
 </head>
@@ -180,8 +201,16 @@ $result = $stmt->get_result();
                                 </p>
                                 <p class="card-text">
                                     <strong>Current Bid:</strong> ₱<?php echo number_format($item['current_price'], 2); ?><br>
+                                    <span class="badge bg-info">
+                                        <i class="fas fa-gavel"></i> <?php echo $item['bid_count']; ?> bid<?php echo $item['bid_count'] != 1 ? 's' : ''; ?>
+                                    </span>
+                                    <?php if (isset($item['user_bid']) && $item['user_bid'] > 0): ?>
+                                        <span class="badge bg-success">
+                                            <i class="fas fa-check"></i> Your bid: ₱<?php echo number_format($item['user_bid'], 2); ?>
+                                        </span>
+                                    <?php endif; ?><br>
                                     <small class="text-muted">
-                                        Ends: <?php echo date('M d, Y H:i', strtotime($item['end_time'])); ?>
+                                        Ends: <?php echo date('M d, Y h:i A', strtotime($item['end_time'])); ?>
                                     </small>
                                 </p>
                                 <div class="d-grid">
