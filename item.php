@@ -211,7 +211,6 @@ if (isset($_SESSION['user_id'])) {
                         <?php endif; ?>
                     </div>
                 </div>
-                <p>HELLO</p>
                 <!-- Bid History -->
                 <div class="card">
                     <div class="card-body">
