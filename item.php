@@ -14,7 +14,7 @@ $sql = "SELECT f.*, c.name as category_name, u.username as seller_name, u.user_i
         FROM furniture_items f 
         JOIN categories c ON f.category_id = c.category_id 
         JOIN users u ON f.seller_id = u.user_id 
-        WHERE f.item_id = ? AND f.status = 'active'";
+        WHERE f.item_id = ? AND f.status IN ('active', 'ending_soon')";
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("i", $item_id);
 $stmt->execute();
@@ -23,6 +23,16 @@ $item = $stmt->get_result()->fetch_assoc();
 if (!$item) {
     header("Location: furniture_list.php");
     exit();
+}
+
+// Check if user has already bid on this item
+$user_has_bid = false;
+if (isset($_SESSION['user_id'])) {
+    $check_bid_sql = "SELECT COUNT(*) as bid_count FROM bids WHERE item_id = ? AND user_id = ?";
+    $check_bid_stmt = $conn->prepare($check_bid_sql);
+    $check_bid_stmt->bind_param("ii", $item_id, $_SESSION['user_id']);
+    $check_bid_stmt->execute();
+    $user_has_bid = $check_bid_stmt->get_result()->fetch_assoc()['bid_count'] > 0;
 }
 
 // Get bid history
@@ -34,8 +44,7 @@ $bid_sql = "SELECT b.*, u.username,
             FROM bids b 
             JOIN users u ON b.user_id = u.user_id 
             WHERE b.item_id = ? 
-            GROUP BY b.user_id
-            ORDER BY b.bid_amount DESC 
+            ORDER BY b.bid_amount DESC, b.bid_time DESC
             LIMIT 3";
 $bid_stmt = $conn->prepare($bid_sql);
 $bid_stmt->bind_param("ii", $item_id, $item_id);
@@ -64,19 +73,66 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_SESSION['user_id'])) {
         } else if (strtotime($item['end_time']) < time()) {
             $bid_error = "This auction has ended";
         } else {
-            // Place bid
-            $bid_sql = "INSERT INTO bids (item_id, user_id, bid_amount, bid_time) VALUES (?, ?, ?, NOW())";
-            $bid_stmt = $conn->prepare($bid_sql);
-            $bid_stmt->bind_param("iid", $item_id, $_SESSION['user_id'], $bid_amount);
+            // Check if user already has a bid
+            $check_existing_bid_sql = "SELECT bid_id FROM bids WHERE item_id = ? AND user_id = ?";
+            $check_existing_bid_stmt = $conn->prepare($check_existing_bid_sql);
+            $check_existing_bid_stmt->bind_param("ii", $item_id, $_SESSION['user_id']);
+            $check_existing_bid_stmt->execute();
+            $existing_bid = $check_existing_bid_stmt->get_result()->fetch_assoc();
+
+            if ($existing_bid) {
+                // Update existing bid
+                $update_bid_sql = "UPDATE bids SET bid_amount = ?, bid_time = NOW() WHERE bid_id = ?";
+                $update_bid_stmt = $conn->prepare($update_bid_sql);
+                $update_bid_stmt->bind_param("di", $bid_amount, $existing_bid['bid_id']);
+                $success = $update_bid_stmt->execute();
+            } else {
+                // Place new bid
+                $new_bid_sql = "INSERT INTO bids (item_id, user_id, bid_amount, bid_time) VALUES (?, ?, ?, NOW())";
+                $new_bid_stmt = $conn->prepare($new_bid_sql);
+                $new_bid_stmt->bind_param("iid", $item_id, $_SESSION['user_id'], $bid_amount);
+                $success = $new_bid_stmt->execute();
+            }
             
-            if ($bid_stmt->execute()) {
+            if ($success) {
                 // Update current price
                 $update_sql = "UPDATE furniture_items SET current_price = ? WHERE item_id = ?";
                 $update_stmt = $conn->prepare($update_sql);
                 $update_stmt->bind_param("di", $bid_amount, $item_id);
                 $update_stmt->execute();
                 
-                $bid_success = "Bid placed successfully!";
+                $bid_success = $existing_bid ? "Bid updated successfully!" : "Bid placed successfully!";
+
+                // Create notifications for other bidders and seller
+                // First, get all unique bidders except current user
+                $get_bidders_sql = "SELECT DISTINCT user_id FROM bids WHERE item_id = ? AND user_id != ?";
+                $get_bidders_stmt = $conn->prepare($get_bidders_sql);
+                $get_bidders_stmt->bind_param("ii", $item_id, $_SESSION['user_id']);
+                $get_bidders_stmt->execute();
+                $bidders_result = $get_bidders_stmt->get_result();
+
+                // Prepare notification message
+                $notification_message = $existing_bid 
+                    ? "Bidder " . $username . " has updated their bid to ₱" . number_format($bid_amount, 2) . " on " . $item['title']
+                    : "New bid of ₱" . number_format($bid_amount, 2) . " placed by " . $username . " on " . $item['title'];
+
+                // Create notification for seller
+                if ($item['seller_id'] != $_SESSION['user_id']) {
+                    $seller_notification_sql = "INSERT INTO notifications (user_id, item_id, message, created_at) VALUES (?, ?, ?, NOW())";
+                    $seller_notification_stmt = $conn->prepare($seller_notification_sql);
+                    $seller_notification_stmt->bind_param("iis", $item['seller_id'], $item_id, $notification_message);
+                    $seller_notification_stmt->execute();
+                }
+
+                // Create notifications for other bidders
+                while ($bidder = $bidders_result->fetch_assoc()) {
+                    if ($bidder['user_id'] != $item['seller_id']) { // Skip if bidder is the seller (already notified)
+                        $notification_sql = "INSERT INTO notifications (user_id, item_id, message, created_at) VALUES (?, ?, ?, NOW())";
+                        $notification_stmt = $conn->prepare($notification_sql);
+                        $notification_stmt->bind_param("iis", $bidder['user_id'], $item_id, $notification_message);
+                        $notification_stmt->execute();
+                    }
+                }
                 
                 // Refresh item details
                 $stmt->execute();
@@ -86,7 +142,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_SESSION['user_id'])) {
                 $bid_stmt->execute();
                 $bid_history = $bid_stmt->get_result();
             } else {
-                $bid_error = "Error placing bid. Please try again.";
+                $bid_error = "Error " . ($existing_bid ? "updating" : "placing") . " bid. Please try again.";
             }
         }
     }
@@ -179,6 +235,27 @@ if (isset($_SESSION['user_id'])) {
                         </a>
                     </li>
                     <?php if (isset($_SESSION['user_id'])): ?>
+                        <?php
+                        // Check if user has bids or sold items
+                        $check_participation_sql = "SELECT 1 
+                            FROM furniture_items f
+                            LEFT JOIN bids b ON f.item_id = b.item_id
+                            WHERE (b.user_id = ? OR f.seller_id = ?)
+                            AND f.end_time < NOW()
+                            LIMIT 1";
+                        $check_stmt = $conn->prepare($check_participation_sql);
+                        $check_stmt->bind_param("ii", $_SESSION['user_id'], $_SESSION['user_id']);
+                        $check_stmt->execute();
+                        $show_winners_nav = $check_stmt->get_result()->num_rows > 0;
+                        
+                        if ($show_winners_nav):
+                        ?>
+                            <li class="nav-item">
+                                <a class="nav-link" href="auction_winners.php">
+                                    <i class="fas fa-trophy me-1"></i>Winners
+                                </a>
+                            </li>
+                        <?php endif; ?>
                         <?php include 'includes/notifications.php'; ?>
                         <li class="nav-item">
                             <a class="nav-link" href="add_item.php">
@@ -190,6 +267,7 @@ if (isset($_SESSION['user_id'])) {
                                 <i class="fas fa-user me-1"></i><?php echo htmlspecialchars($username); ?>
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                                <li><a class="dropdown-item" href="dashboard.php"><i class="fas fa-tachometer-alt me-2"></i>Dashboard</a></li>
                                 <li><a class="dropdown-item" href="profile.php"><i class="fas fa-user-circle me-2"></i>Profile</a></li>
                                 <li><a class="dropdown-item" href="my_bids.php"><i class="fas fa-gavel me-2"></i>My Bids</a></li>
                                 <li><a class="dropdown-item" href="dashboard.php?tab=watchlist"><i class="fas fa-heart me-2"></i>Watchlist</a></li>
@@ -250,6 +328,13 @@ if (isset($_SESSION['user_id'])) {
                     <div class="card-body">
                         <h3 class="card-title">Current Bid</h3>
                         <h2 class="text-primary mb-3">₱<?php echo number_format($item['current_price'], 2); ?></h2>
+                        <?php if ($item['status'] === 'ending_soon'): ?>
+                            <div class="alert alert-warning">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                <strong>Auction Ending Soon!</strong><br>
+                                This auction will end in a few minutes. Place your final bids now!
+                            </div>
+                        <?php endif; ?>
                         <p class="text-muted">
                             Starting Price: ₱<?php echo number_format($item['starting_price'], 2); ?><br>
                             Auction Ends: <?php echo date('M d, Y h:i A', strtotime($item['end_time'])); ?>
@@ -258,15 +343,27 @@ if (isset($_SESSION['user_id'])) {
                         <?php if (isset($_SESSION['user_id'])): ?>
                             <?php if (strtotime($item['end_time']) > time()): ?>
                                 <?php if ($item['seller_id'] == $_SESSION['user_id']): ?>
-                                    <div class="alert alert-info">
+                                    <div class="alert alert-info mb-3">
                                         <i class="fas fa-info-circle me-2"></i>You cannot bid on your own item
                                     </div>
+                                    <?php if ($item['status'] === 'active'): ?>
+                                        <div class="alert alert-info">
+                                            <i class="fas fa-clock me-2"></i>Auction is active
+                                        </div>
+                                        <a href="edit_auction.php?id=<?php echo $item_id; ?>" class="btn btn-primary w-100 mb-3">
+                                            <i class="fas fa-edit me-1"></i>Edit Auction
+                                        </a>
+                                    <?php else: ?>
+                                        <div class="alert alert-info">
+                                            <i class="fas fa-clock me-2"></i>Auction is ending soon...
+                                        </div>
+                                    <?php endif; ?>
                                 <?php else: ?>
                                     <form method="POST" class="mb-3">
                                         <div class="input-group mb-3">
                                             <span class="input-group-text">₱</span>
                                             <input type="number" name="bid_amount" class="form-control" step="0.01" min="<?php echo $item['current_price'] + 0.01; ?>" required>
-                                            <button type="submit" class="btn btn-primary">Place Bid</button>
+                                            <button type="submit" class="btn btn-primary"><?php echo $user_has_bid ? 'Update Bid' : 'Place Bid'; ?></button>
                                         </div>
                                     </form>
                                 <?php endif; ?>
@@ -280,7 +377,43 @@ if (isset($_SESSION['user_id'])) {
                                     </button>
                                 </form>
                             <?php else: ?>
-                                <div class="alert alert-warning">This auction has ended</div>
+                                <div class="alert alert-warning">
+                                    <i class="fas fa-gavel me-2"></i>This auction has ended
+                                    <?php
+                                    // Get winner information
+                                    $winner_sql = "SELECT u.username, b.bid_amount, b.bid_time 
+                                                 FROM bids b 
+                                                 JOIN users u ON b.user_id = u.user_id 
+                                                 WHERE b.item_id = ? 
+                                                 AND b.bid_amount = (SELECT MAX(bid_amount) FROM bids WHERE item_id = ?)
+                                                 ORDER BY b.bid_time ASC LIMIT 1";
+                                    $winner_stmt = $conn->prepare($winner_sql);
+                                    $winner_stmt->bind_param("ii", $item_id, $item_id);
+                                    $winner_stmt->execute();
+                                    $winner = $winner_stmt->get_result()->fetch_assoc();
+                                    
+                                    if ($winner): ?>
+                                        <hr>
+                                        <div class="text-center">
+                                            <i class="fas fa-trophy text-warning me-2"></i>
+                                            <strong>Winner: <?php echo htmlspecialchars($winner['username']); ?></strong><br>
+                                            <span class="text-success">Winning Bid: ₱<?php echo number_format($winner['bid_amount'], 2); ?></span><br>
+                                            <small class="text-muted">
+                                                Bid placed on <?php echo date('M d, Y h:i A', strtotime($winner['bid_time'])); ?>
+                                            </small>
+                                        </div>
+                                        <?php if (isset($_SESSION['user_id']) && $winner['username'] === $username): ?>
+                                            <div class="alert alert-success mt-3 mb-0">
+                                                <i class="fas fa-check-circle me-2"></i>Congratulations! You won this auction!
+                                            </div>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        <hr>
+                                        <div class="text-center text-muted">
+                                            <i class="fas fa-info-circle me-2"></i>No bids were placed on this item
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
                             <?php endif; ?>
                         <?php else: ?>
                             <a href="login.php" class="btn btn-primary w-100">Login to Bid</a>

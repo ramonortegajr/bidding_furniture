@@ -178,16 +178,12 @@ $result = $stmt->get_result();
                                 <?php endif; ?>
                             </div>
                         </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="dashboard.php">
-                                <i class="fas fa-tachometer-alt me-1"></i>Dashboard
-                            </a>
-                        </li>
                         <li class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                                 <i class="fas fa-user me-1"></i><?php echo htmlspecialchars($username); ?>
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                            <li><a class="dropdown-item" href="dashboard.php"><i class="fas fa-tachometer-alt me-2"></i>Dashboard</a></li>
                                 <li><a class="dropdown-item" href="profile.php"><i class="fas fa-user-circle me-2"></i>Profile</a></li>
                                 <li><a class="dropdown-item" href="my_bids.php"><i class="fas fa-gavel me-2"></i>My Bids</a></li>
                                 <li><a class="dropdown-item" href="dashboard.php?tab=watchlist"><i class="fas fa-heart me-2"></i>Watchlist</a></li>
@@ -329,8 +325,14 @@ $result = $stmt->get_result();
                                 <!-- Action Buttons -->
                                 <div class="d-grid gap-2">
                                     <?php if ($time_left > 0 && (!isset($_SESSION['user_id']) || $_SESSION['user_id'] != $item['seller_id'])): ?>
-                                        <a href="place_bid.php?id=<?php echo $item['item_id']; ?>" class="btn btn-success">
-                                            <i class="fas fa-gavel me-1"></i>Place Bid
+                                        <?php 
+                                        $bid_url = "place_bid.php?id=" . $item['item_id'];
+                                        if (isset($item['user_bid']) && $item['user_bid'] > 0) {
+                                            $bid_url .= "&edit=1&amount=" . $item['user_bid'];
+                                        }
+                                        ?>
+                                        <a href="<?php echo $bid_url; ?>" class="btn btn-success">
+                                            <i class="fas fa-gavel me-1"></i><?php echo isset($item['user_bid']) && $item['user_bid'] > 0 ? 'Update Bid' : 'Place Bid'; ?>
                                         </a>
                                     <?php endif; ?>
                                     <a href="item.php?id=<?php echo $item['item_id']; ?>" class="btn btn-primary">

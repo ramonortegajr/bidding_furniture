@@ -17,5 +17,5 @@ if ($conn->connect_error) {
 $conn->set_charset("utf8mb4");
 
 // Set timezone
-date_default_timezone_set('UTC');
+date_default_timezone_set('Asia/Manila');
 ?> 

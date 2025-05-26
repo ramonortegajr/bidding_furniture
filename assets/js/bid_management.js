@@ -1,26 +1,28 @@
 function deleteBid(bidId) {
     if (confirm('Are you sure you want to delete this bid?')) {
-        $.ajax({
-            url: 'manage_bid.php',
-            type: 'POST',
-            data: {
-                action: 'delete',
-                bid_id: bidId
+        fetch('delete_bid.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
             },
-            success: function(response) {
-                if (response.success) {
-                    // Remove the bid row from the table
-                    $(`#bid-${bidId}`).fadeOut(400, function() {
-                        $(this).remove();
-                    });
-                    showAlert('success', response.message);
-                } else {
-                    showAlert('danger', response.message);
-                }
-            },
-            error: function() {
-                showAlert('danger', 'Error processing your request.');
+            body: 'bid_id=' + bidId
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Show success message
+                showAlert('Bid deleted successfully!', 'success');
+                // Reload the page after a short delay
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            } else {
+                showAlert(data.error || 'Error deleting bid', 'danger');
             }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showAlert('Error deleting bid', 'danger');
         });
     }
 }
@@ -71,20 +73,18 @@ function editBid(bidId, currentAmount) {
     }
 }
 
-function showAlert(type, message) {
-    const alertHtml = `
-        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
+function showAlert(message, type) {
+    const alertContainer = document.getElementById('alert-container');
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     `;
+    alertContainer.appendChild(alertDiv);
     
-    $('#alert-container').html(alertHtml);
-    
-    // Auto-hide alert after 5 seconds
-    setTimeout(function() {
-        $('.alert').fadeOut(400, function() {
-            $(this).remove();
-        });
-    }, 5000);
+    // Remove the alert after 3 seconds
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 3000);
 } 

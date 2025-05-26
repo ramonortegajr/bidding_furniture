@@ -86,11 +86,6 @@ $expired_result = $conn->query($expired_sql);
                             <i class="fas fa-envelope me-1"></i>Contact
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="furniture_list.php">
-                            <i class="fas fa-list me-1"></i>Browse Furniture
-                        </a>
-                    </li>
                     <?php if (isset($_SESSION['user_id'])): ?>
                         <?php include 'includes/notifications.php'; ?>
                         <li class="nav-item dropdown">

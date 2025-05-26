@@ -17,24 +17,23 @@ if (isset($_SESSION['user_id'])) {
     $notifications = $notifications_stmt->get_result();
 
     // Count unread notifications
-    while ($notification = $notifications->fetch_assoc()) {
-        if (!$notification['is_read']) {
-            $unread_count++;
-        }
-    }
-    $notifications->data_seek(0); // Reset result pointer
+    $unread_sql = "SELECT COUNT(*) as unread FROM notifications WHERE user_id = ? AND is_read = 0";
+    $unread_stmt = $conn->prepare($unread_sql);
+    $unread_stmt->bind_param("i", $_SESSION['user_id']);
+    $unread_stmt->execute();
+    $unread_count = $unread_stmt->get_result()->fetch_assoc()['unread'];
 }
 ?>
 
 <!-- Notifications Dropdown -->
 <li class="nav-item dropdown">
-    <a class="nav-link dropdown-toggle" href="#" id="notificationsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+    <a class="nav-link" href="#" id="notificationsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
         <i class="fas fa-bell me-1"></i>Notifications
         <?php if ($unread_count > 0): ?>
             <span class="badge bg-danger notification-badge"><?php echo $unread_count; ?></span>
         <?php endif; ?>
     </a>
-    <div class="dropdown-menu dropdown-menu-end notification-dropdown" aria-labelledby="notificationsDropdown">
+    <div class="dropdown-menu dropdown-menu-end notification-dropdown" style="width: 300px; max-height: 400px; overflow-y: auto;">
         <div class="dropdown-header d-flex justify-content-between align-items-center">
             <span><i class="fas fa-bell me-2"></i>Notifications</span>
             <?php if ($unread_count > 0): ?>
@@ -47,7 +46,7 @@ if (isset($_SESSION['user_id'])) {
                    href="item.php?id=<?php echo $notification['item_id']; ?>"
                    onclick="markNotificationRead(<?php echo $notification['notification_id']; ?>)">
                     <div class="d-flex align-items-center">
-                        <img src="<?php echo htmlspecialchars($notification['image_url'] ?: 'assets/images/no-image.jpg'); ?>" 
+                        <img src="<?php echo $notification['image_url'] ?: 'assets/images/no-image.jpg'; ?>" 
                              class="rounded me-2" 
                              alt="<?php echo htmlspecialchars($notification['item_title']); ?>"
                              style="width: 40px; height: 40px; object-fit: cover;">

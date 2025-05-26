@@ -86,14 +86,28 @@ while ($row = $bidders_result->fetch_assoc()) {
 }
 
 // Add this query after the existing queries
-$notifications_sql = "SELECT n.*, f.title as item_title, f.image_url, f.current_price
+$notifications_sql = "SELECT n.*, f.title as item_title, f.image_url, f.current_price,
+                     CASE 
+                         WHEN EXISTS (
+                             SELECT 1 FROM bids b 
+                             WHERE b.item_id = n.item_id 
+                             AND b.user_id = ? 
+                             AND b.bid_amount = f.current_price
+                         ) THEN 'highest'
+                         WHEN EXISTS (
+                             SELECT 1 FROM bids b 
+                             WHERE b.item_id = n.item_id 
+                             AND b.user_id = ?
+                         ) THEN 'outbid'
+                         ELSE NULL
+                     END as bid_status
                      FROM notifications n 
                      JOIN furniture_items f ON n.item_id = f.item_id 
                      WHERE n.user_id = ? 
                      ORDER BY n.created_at DESC 
                      LIMIT 5";
 $notifications_stmt = $conn->prepare($notifications_sql);
-$notifications_stmt->bind_param("i", $user_id);
+$notifications_stmt->bind_param("iii", $user_id, $user_id, $user_id);
 $notifications_stmt->execute();
 $notifications = $notifications_stmt->get_result();
 
@@ -173,6 +187,15 @@ if ($notifications && $notifications->num_rows > 0) {
                                             <div class="flex-grow-1">
                                                 <p class="mb-1" style="font-size: 0.9rem;">
                                                     <?php echo htmlspecialchars($notification['message']); ?>
+                                                    <?php if ($notification['bid_status']): ?>
+                                                        <span class="badge <?php echo $notification['bid_status'] === 'highest' ? 'bg-success' : 'bg-warning text-dark'; ?> ms-1">
+                                                            <?php if ($notification['bid_status'] === 'highest'): ?>
+                                                                <i class="fas fa-trophy"></i> Highest Bidder
+                                                            <?php else: ?>
+                                                                <i class="fas fa-exclamation-circle"></i> Outbid
+                                                            <?php endif; ?>
+                                                        </span>
+                                                    <?php endif; ?>
                                                 </p>
                                                 <small class="text-muted">
                                                     <i class="far fa-clock me-1"></i>
@@ -198,6 +221,7 @@ if ($notifications && $notifications->num_rows > 0) {
                             <i class="fas fa-user me-1"></i><?php echo htmlspecialchars($user['username']); ?>
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                        <li><a class="dropdown-item" href="dashboard.php"><i class="fas fa-tachometer-alt me-2"></i>Dashboard</a></li>
                             <li><a class="dropdown-item" href="profile.php"><i class="fas fa-user-circle me-2"></i>Profile</a></li>
                             <li><a class="dropdown-item" href="dashboard.php"><i class="fas fa-gavel me-2"></i>My Bids</a></li>
                             <li><a class="dropdown-item" href="dashboard.php?tab=watchlist"><i class="fas fa-heart me-2"></i>Watchlist</a></li>
@@ -264,8 +288,9 @@ if ($notifications && $notifications->num_rows > 0) {
                                 <button class="nav-link" id="pills-bidders-tab" data-bs-toggle="pill" data-bs-target="#pills-bidders" type="button">Item Bidders</button>
                             </li>
                         </ul>
+                        <div class="tab-content" id="pills-tabContent">
                             <!-- Active Bids Tab -->
-                            <div class="tab-pane fade show active" id="pills-bids">
+                            <div class="tab-pane fade show active" id="pills-bids" role="tabpanel" aria-labelledby="pills-bids-tab">
                                 <div class="row">
                                     <?php if ($active_bids->num_rows > 0): ?>
                                         <?php while ($bid = $active_bids->fetch_assoc()): ?>
@@ -306,7 +331,7 @@ if ($notifications && $notifications->num_rows > 0) {
                                                             <i class="fas fa-clock"></i> Ends: <?php echo date('M d, Y h:i A', strtotime($bid['end_time'])); ?>
                                                         </p>
                                                         <div class="mt-auto d-flex gap-2">
-                                                            <a href="item.php?id=<?php echo $bid['item_id']; ?>" 
+                                                            <a href="place_bid.php?id=<?php echo $bid['item_id']; ?>&edit=1&amount=<?php echo $bid['bid_amount']; ?>" 
                                                                class="btn btn-outline-primary flex-grow-1">
                                                                 <i class="fas fa-edit me-1"></i>Edit Bid
                                                             </a>
@@ -337,7 +362,7 @@ if ($notifications && $notifications->num_rows > 0) {
                             </div>
 
                             <!-- My Listings Tab -->
-                            <div class="tab-pane fade" id="pills-listings">
+                            <div class="tab-pane fade" id="pills-listings" role="tabpanel" aria-labelledby="pills-listings-tab">
                                 <div class="row">
                                     <?php if ($my_listings->num_rows > 0): ?>
                                         <?php while ($item = $my_listings->fetch_assoc()): ?>
@@ -356,8 +381,14 @@ if ($notifications && $notifications->num_rows > 0) {
                                                             <strong>End Time:</strong> <?php echo date('M d, Y H:i', strtotime($item['end_time'])); ?>
                                                         </p>
                                                         <div class="mt-auto">
-                                                            <a href="edit_item.php?id=<?php echo $item['item_id']; ?>" class="btn btn-primary">Edit</a>
-                                                            <a href="item.php?id=<?php echo $item['item_id']; ?>" class="btn btn-success">View</a>
+                                                            <?php if ($item['status'] === 'active'): ?>
+                                                                <a href="edit_auction.php?id=<?php echo $item['item_id']; ?>" class="btn btn-primary">
+                                                                    <i class="fas fa-edit me-1"></i>Edit Auction
+                                                                </a>
+                                                            <?php endif; ?>
+                                                            <a href="item.php?id=<?php echo $item['item_id']; ?>" class="btn btn-success">
+                                                                <i class="fas fa-eye me-1"></i>View
+                                                            </a>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -380,7 +411,7 @@ if ($notifications && $notifications->num_rows > 0) {
                             </div>
 
                             <!-- Watchlist Tab -->
-                            <div class="tab-pane fade" id="pills-watchlist">
+                            <div class="tab-pane fade" id="pills-watchlist" role="tabpanel" aria-labelledby="pills-watchlist-tab">
                                 <div class="row">
                                     <?php if ($watchlist_items->num_rows > 0): ?>
                                         <?php while ($item = $watchlist_items->fetch_assoc()): ?>
@@ -419,7 +450,7 @@ if ($notifications && $notifications->num_rows > 0) {
                             </div>
 
                             <!-- Item Bidders Tab -->
-                            <div class="tab-pane fade" id="pills-bidders">
+                            <div class="tab-pane fade" id="pills-bidders" role="tabpanel" aria-labelledby="pills-bidders-tab">
                                 <div class="row">
                                     <?php if (!empty($items_with_bids)): ?>
                                         <?php foreach ($items_with_bids as $item_id => $item): ?>
@@ -579,6 +610,19 @@ if ($notifications && $notifications->num_rows > 0) {
 
                         if (data.notifications && data.notifications.length > 0) {
                             data.notifications.forEach(notification => {
+                                let bidStatusBadge = '';
+                                if (notification.bid_status) {
+                                    if (notification.bid_status === 'highest') {
+                                        bidStatusBadge = `<span class="badge bg-success ms-1">
+                                            <i class="fas fa-trophy"></i> Highest Bidder
+                                        </span>`;
+                                    } else if (notification.bid_status === 'outbid') {
+                                        bidStatusBadge = `<span class="badge bg-warning text-dark ms-1">
+                                            <i class="fas fa-exclamation-circle"></i> Outbid
+                                        </span>`;
+                                    }
+                                }
+                                
                                 notificationsHtml += `
                                     <a class="dropdown-item ${!notification.is_read ? 'unread' : ''}" 
                                        href="item.php?id=${notification.item_id}"
@@ -591,6 +635,7 @@ if ($notifications && $notifications->num_rows > 0) {
                                             <div class="flex-grow-1">
                                                 <p class="mb-1" style="font-size: 0.9rem;">
                                                     ${notification.message}
+                                                    ${bidStatusBadge}
                                                 </p>
                                                 <small class="text-muted">
                                                     <i class="far fa-clock me-1"></i>
