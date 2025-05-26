@@ -3,22 +3,41 @@ session_start();
 require_once 'config/database.php';
 require_once 'includes/nav_helpers.php';
 
+// Get the view type from URL parameter
+$view_type = isset($_GET['view']) ? $_GET['view'] : 'ended';
+
 // Check if user has bids or sold items
 $show_winners_nav = checkWinnersNavVisibility($conn, $_SESSION['user_id'] ?? null);
 
-// Redirect if user has no participation
-if (!$show_winners_nav) {
-    header("Location: furniture_list.php");
-    exit();
+// Build WHERE conditions based on view type
+$where_conditions = [];
+if ($view_type === 'ended') {
+    $where_conditions[] = "f.end_time < NOW()";
+} else {
+    $where_conditions[] = "f.status = 'active'";
+    $where_conditions[] = "f.end_time > NOW()";
 }
 
-// Build WHERE conditions
-$where_conditions = ["f.end_time < NOW()"];
 $params = [];
 $types = "";
 
-// If user is logged in, only show relevant auctions
+// Mark notifications as sent for ended auctions
 if (isset($_SESSION['user_id'])) {
+    $update_notification_sql = "UPDATE furniture_items 
+                              SET notification_sent = 1 
+                              WHERE end_time <= NOW() 
+                              AND status = 'active'
+                              AND notification_sent = 0
+                              AND (item_id IN (
+                                  SELECT item_id FROM bids WHERE user_id = ?
+                              ) OR seller_id = ?)";
+    $update_stmt = $conn->prepare($update_notification_sql);
+    $update_stmt->bind_param("ii", $_SESSION['user_id'], $_SESSION['user_id']);
+    $update_stmt->execute();
+}
+
+// If user is logged in, only show relevant auctions for ended view
+if (isset($_SESSION['user_id']) && $view_type === 'ended') {
     $where_conditions[] = "(b.user_id = ? OR f.seller_id = ?)";
     $params[] = $_SESSION['user_id'];
     $params[] = $_SESSION['user_id'];
@@ -62,22 +81,25 @@ if (isset($_GET['sort'])) {
     }
 }
 
-// Get completed auctions and their winners
+// Get auctions based on view type
 $winners_sql = "SELECT 
     f.item_id,
     f.title,
     f.image_url,
     f.current_price as winning_bid,
     f.end_time,
+    f.starting_price,
+    f.seller_id,
     w.username as winner_name,
     s.username as seller_name,
-    b.bid_time as winning_bid_time
+    b.bid_time as winning_bid_time,
+    (SELECT COUNT(*) FROM bids WHERE item_id = f.item_id) as bid_count
     FROM furniture_items f
-    JOIN bids b ON f.item_id = b.item_id
-    JOIN users w ON b.user_id = w.user_id
     JOIN users s ON f.seller_id = s.user_id
+    LEFT JOIN bids b ON f.item_id = b.item_id AND b.bid_amount = f.current_price
+    LEFT JOIN users w ON b.user_id = w.user_id
     WHERE " . implode(" AND ", $where_conditions) . "
-    AND b.bid_amount = f.current_price
+    GROUP BY f.item_id
     ORDER BY " . $sort_order;
 
 $winners_stmt = $conn->prepare($winners_sql);
@@ -133,75 +155,32 @@ if (isset($_SESSION['user_id'])) {
 </head>
 <body>
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-light bg-light fixed-top">
-        <div class="container">
-            <a class="navbar-brand" href="index.php">
-                <i class="fas fa-couch me-2"></i>Furniture Bidding
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto align-items-center">
-                    <li class="nav-item">
-                        <a class="nav-link" href="index.php">
-                            <i class="fas fa-home me-1"></i>Home
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="furniture_list.php">
-                            <i class="fas fa-list me-1"></i>Browse Furniture
-                        </a>
-                    </li>
-                    <?php if (isset($_SESSION['user_id'])): ?>
-                        <?php include 'includes/notifications.php'; ?>
-                        <li class="nav-item">
-                            <a class="nav-link" href="add_item.php">
-                                <i class="fas fa-plus-circle me-1"></i>Add Item
-                            </a>
-                        </li>
-                        <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fas fa-user me-1"></i><?php echo htmlspecialchars($username); ?>
-                            </a>
-                            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
-                                <li><a class="dropdown-item" href="dashboard.php"><i class="fas fa-tachometer-alt me-2"></i>Dashboard</a></li>
-                                <li><a class="dropdown-item" href="profile.php"><i class="fas fa-user-circle me-2"></i>Profile</a></li>
-                                <li><a class="dropdown-item" href="my_bids.php"><i class="fas fa-gavel me-2"></i>My Bids</a></li>
-                                <li><a class="dropdown-item" href="dashboard.php?tab=watchlist"><i class="fas fa-heart me-2"></i>Watchlist</a></li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item text-danger" href="logout.php"><i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
-                            </ul>
-                        </li>
-                    <?php else: ?>
-                        <li class="nav-item">
-                            <a class="nav-link btn btn-outline-primary btn-sm px-3" href="login.php">
-                                <i class="fas fa-sign-in-alt me-1"></i>Login
-                            </a>
-                        </li>
-                    <?php endif; ?>
-                </ul>
-            </div>
-        </div>
-    </nav>
+    <?php include 'includes/navigation_common.php'; ?>
 
     <div class="container" style="margin-top: 80px;">
         <!-- Navigation breadcrumb -->
         <nav aria-label="breadcrumb" class="mb-4">
             <ol class="breadcrumb">
                 <li class="breadcrumb-item"><a href="index.php">Home</a></li>
-                <li class="breadcrumb-item active">Auction Winners</li>
+                <li class="breadcrumb-item active"><?php echo $view_type === 'ended' ? 'Ended' : 'Active'; ?> Auctions</li>
             </ol>
         </nav>
 
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2>
-                <i class="fas fa-trophy me-2 text-warning"></i>
-                Auction Winners
+                <?php if ($view_type === 'ended'): ?>
+                    <i class="fas fa-trophy me-2 text-warning"></i>Ended Auctions
+                <?php else: ?>
+                    <i class="fas fa-gavel me-2 text-primary"></i>Active Auctions
+                <?php endif; ?>
             </h2>
             <div class="btn-group">
-                <a href="furniture_list.php" class="btn btn-outline-primary">
-                    <i class="fas fa-gavel me-1"></i>Active Auctions
+                <a href="?view=<?php echo $view_type === 'ended' ? 'active' : 'ended'; ?>" class="btn <?php echo $view_type === 'ended' ? 'btn-primary' : 'btn-outline-primary'; ?>">
+                    <?php if ($view_type === 'ended'): ?>
+                        <i class="fas fa-gavel me-1"></i>View Active Auctions
+                    <?php else: ?>
+                        <i class="fas fa-trophy me-1"></i>View Ended Auctions
+                    <?php endif; ?>
                 </a>
                 <?php if (isset($_SESSION['user_id'])): ?>
                     <a href="my_bids.php" class="btn btn-outline-success">
@@ -249,15 +228,15 @@ if (isset($_SESSION['user_id'])) {
         <!-- Results Section -->
         <div class="row">
             <?php if ($winners_result && $winners_result->num_rows > 0): ?>
-                <?php while ($winner = $winners_result->fetch_assoc()): ?>
+                <?php while ($item = $winners_result->fetch_assoc()): ?>
                     <div class="col-md-6 mb-4">
                         <div class="card">
                             <div class="row g-0">
                                 <div class="col-md-4">
-                                    <?php if ($winner['image_url']): ?>
-                                        <img src="<?php echo htmlspecialchars($winner['image_url']); ?>" 
+                                    <?php if ($item['image_url']): ?>
+                                        <img src="<?php echo htmlspecialchars($item['image_url']); ?>" 
                                              class="img-fluid rounded-start" 
-                                             alt="<?php echo htmlspecialchars($winner['title']); ?>"
+                                             alt="<?php echo htmlspecialchars($item['title']); ?>"
                                              style="height: 200px; object-fit: cover;">
                                     <?php else: ?>
                                         <img src="assets/images/no-image.jpg" 
@@ -268,22 +247,61 @@ if (isset($_SESSION['user_id'])) {
                                 </div>
                                 <div class="col-md-8">
                                     <div class="card-body">
-                                        <h5 class="card-title"><?php echo htmlspecialchars($winner['title']); ?></h5>
-                                        <div class="mb-2">
-                                            <span class="badge bg-success">
-                                                <i class="fas fa-trophy me-1"></i>Winner: <?php echo htmlspecialchars($winner['winner_name']); ?>
-                                            </span>
-                                        </div>
+                                        <h5 class="card-title"><?php echo htmlspecialchars($item['title']); ?></h5>
+                                        <?php if ($view_type === 'ended'): ?>
+                                            <div class="mb-2">
+                                                <?php if ($item['winner_name']): ?>
+                                                    <span class="badge bg-success">
+                                                        <i class="fas fa-trophy me-1"></i>Winner: <?php echo htmlspecialchars($item['winner_name']); ?>
+                                                    </span>
+                                                <?php else: ?>
+                                                    <span class="badge bg-secondary">
+                                                        <i class="fas fa-times me-1"></i>No Winner
+                                                    </span>
+                                                <?php endif; ?>
+                                            </div>
+                                        <?php else: ?>
+                                            <div class="mb-2">
+                                                <span class="badge bg-primary">
+                                                    <i class="fas fa-gavel me-1"></i><?php echo $item['bid_count']; ?> Bid<?php echo $item['bid_count'] != 1 ? 's' : ''; ?>
+                                                </span>
+                                                <span class="badge bg-info ms-1">
+                                                    <i class="fas fa-clock me-1"></i>
+                                                    <?php
+                                                    $end_time = strtotime($item['end_time']);
+                                                    $now = time();
+                                                    $time_left = $end_time - $now;
+                                                    $days = floor($time_left / (60 * 60 * 24));
+                                                    $hours = floor(($time_left % (60 * 60 * 24)) / (60 * 60));
+                                                    echo $days > 0 ? $days . "d " . $hours . "h left" : $hours . "h left";
+                                                    ?>
+                                                </span>
+                                            </div>
+                                        <?php endif; ?>
                                         <p class="card-text">
-                                            <small class="text-muted">Seller: <?php echo htmlspecialchars($winner['seller_name']); ?></small><br>
-                                            <strong class="text-success">Winning Bid: ₱<?php echo number_format($winner['winning_bid'], 2); ?></strong><br>
+                                            <small class="text-muted">Seller: <?php echo htmlspecialchars($item['seller_name']); ?></small><br>
+                                            <?php if ($view_type === 'ended'): ?>
+                                                <strong class="text-success">Final Price: ₱<?php echo number_format($item['winning_bid'], 2); ?></strong>
+                                            <?php else: ?>
+                                                <strong class="text-primary">Current Bid: ₱<?php echo number_format($item['winning_bid'], 2); ?></strong><br>
+                                                <small class="text-muted">Starting Price: ₱<?php echo number_format($item['starting_price'], 2); ?></small>
+                                            <?php endif; ?>
+                                            <br>
                                             <small class="text-muted">
-                                                Auction Ended: <?php echo date('M d, Y h:i A', strtotime($winner['end_time'])); ?>
+                                                <?php echo $view_type === 'ended' ? 'Ended: ' : 'Ends: '; ?>
+                                                <?php echo date('M d, Y h:i A', strtotime($item['end_time'])); ?>
                                             </small>
                                         </p>
-                                        <a href="item.php?id=<?php echo $winner['item_id']; ?>" class="btn btn-primary btn-sm">
-                                            <i class="fas fa-info-circle me-1"></i>View Details
-                                        </a>
+                                        <div class="mt-2">
+                                            <a href="item.php?id=<?php echo $item['item_id']; ?>" class="btn btn-primary btn-sm">
+                                                <i class="fas fa-info-circle me-1"></i>View Details
+                                            </a>
+                                            <?php if ($view_type === 'active' && isset($_SESSION['user_id']) && $_SESSION['user_id'] != $item['seller_id']): ?>
+                                                <a href="place_bid.php?id=<?php echo $item['item_id']; ?>" class="btn btn-success btn-sm">
+                                                    <i class="fas fa-gavel me-1"></i>Place Bid
+                                                </a>
+                                            <?php endif; ?>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -293,7 +311,7 @@ if (isset($_SESSION['user_id'])) {
             <?php else: ?>
                 <div class="col-12">
                     <div class="alert alert-info text-center">
-                        <i class="fas fa-info-circle me-2"></i>No completed auctions found
+                        <i class="fas fa-info-circle me-2"></i>No <?php echo $view_type === 'ended' ? 'completed' : 'active'; ?> auctions found
                     </div>
                 </div>
             <?php endif; ?>

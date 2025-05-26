@@ -10,6 +10,29 @@ if (!isset($_SESSION['user_id'])) {
 
 $user_id = $_SESSION['user_id'];
 
+// Get user information including username
+$user_sql = "SELECT username, email, created_at FROM users WHERE user_id = ?";
+$user_stmt = $conn->prepare($user_sql);
+$user_stmt->bind_param("i", $user_id);
+$user_stmt->execute();
+$user_result = $user_stmt->get_result();
+$user_data = $user_result->fetch_assoc();
+$username = $user_data['username'];
+
+// Get user's auction statistics
+$stats_sql = "SELECT 
+    (SELECT COUNT(*) FROM furniture_items WHERE seller_id = ?) as total_items_listed,
+    (SELECT COUNT(*) FROM bids WHERE user_id = ?) as total_bids_placed,
+    (SELECT COUNT(*) FROM furniture_items f 
+     JOIN bids b ON f.item_id = b.item_id 
+     WHERE b.user_id = ? AND b.bid_amount = f.current_price AND f.end_time <= NOW()) as auctions_won";
+
+$stats_stmt = $conn->prepare($stats_sql);
+$stats_stmt->bind_param("iii", $user_id, $user_id, $user_id);
+$stats_stmt->execute();
+$stats_result = $stats_stmt->get_result();
+$stats = $stats_result->fetch_assoc();
+
 // Get user information first (needed for profile image update)
 $sql = "SELECT * FROM users WHERE user_id = ?";
 $stmt = $conn->prepare($sql);
@@ -96,7 +119,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Profile - Furniture Bidding System</title>
+    <title>Profile - Furniture Bidding System</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="assets/css/style.css">
@@ -179,43 +202,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 </head>
 <body>
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-light bg-light fixed-top">
-        <div class="container">
-            <a class="navbar-brand" href="index.php">
-                <i class="fas fa-couch me-2"></i>Furniture Bidding
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto align-items-center">
-                    <li class="nav-item">
-                        <a class="nav-link" href="index.php">
-                            <i class="fas fa-home me-1"></i>Home
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="furniture_list.php">
-                            <i class="fas fa-list me-1"></i>Browse Furniture
-                        </a>
-                    </li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fas fa-user me-1"></i><?php echo htmlspecialchars($user['username']); ?>
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
-                            <li><a class="dropdown-item" href="dashboard.php"><i class="fas fa-tachometer-alt me-2"></i>Dashboard</a></li>
-                            <li><a class="dropdown-item active" href="profile.php"><i class="fas fa-user-circle me-2"></i>Profile</a></li>
-                            <li><a class="dropdown-item" href="dashboard.php"><i class="fas fa-gavel me-2"></i>My Bids</a></li>
-                            <li><a class="dropdown-item" href="dashboard.php?tab=watchlist"><i class="fas fa-heart me-2"></i>Watchlist</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item text-danger" href="logout.php"><i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
-                        </ul>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </nav>
+    <?php include 'includes/navigation_common.php'; ?>
 
     <div class="container" style="margin-top: 80px;">
         <div class="row justify-content-center">

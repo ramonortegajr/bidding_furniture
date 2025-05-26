@@ -16,6 +16,9 @@ $stmt->bind_param("i", $user_id);
 $stmt->execute();
 $user = $stmt->get_result()->fetch_assoc();
 
+// Get username
+$username = $user['username'];
+
 // Get user's active bids
 $bids_sql = "SELECT b.*, f.title, f.current_price, f.end_time, f.image_url,
              (SELECT COUNT(*) FROM bids WHERE item_id = f.item_id) as total_bids,
@@ -134,105 +137,7 @@ if ($notifications && $notifications->num_rows > 0) {
 </head>
 <body>
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-light bg-light fixed-top">
-        <div class="container">
-            <a class="navbar-brand" href="index.php">
-                <i class="fas fa-couch me-2"></i>Furniture Bidding
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto align-items-center">
-                    <li class="nav-item">
-                        <a class="nav-link" href="index.php">
-                            <i class="fas fa-home me-1"></i>Home
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="furniture_list.php">
-                            <i class="fas fa-list me-1"></i>Browse Furniture
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="add_item.php">
-                            <i class="fas fa-plus-circle me-1"></i>Add Item
-                        </a>
-                    </li>
-                    <!-- Notifications Dropdown -->
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="notificationsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fas fa-bell me-1"></i>Notifications
-                            <?php if ($unread_count > 0): ?>
-                                <span class="badge bg-danger notification-badge"><?php echo $unread_count; ?></span>
-                            <?php endif; ?>
-                        </a>
-                        <div class="dropdown-menu dropdown-menu-end notification-dropdown" aria-labelledby="notificationsDropdown">
-                            <div class="dropdown-header d-flex justify-content-between align-items-center">
-                                <span><i class="fas fa-bell me-2"></i>Notifications</span>
-                                <?php if ($unread_count > 0): ?>
-                                    <span class="badge bg-danger"><?php echo $unread_count; ?> new</span>
-                                <?php endif; ?>
-                            </div>
-                            <?php if ($notifications && $notifications->num_rows > 0): ?>
-                                <?php while ($notification = $notifications->fetch_assoc()): ?>
-                                    <a class="dropdown-item <?php echo !$notification['is_read'] ? 'unread' : ''; ?>" 
-                                       href="item.php?id=<?php echo $notification['item_id']; ?>"
-                                       onclick="markNotificationRead(<?php echo $notification['notification_id']; ?>)">
-                                        <div class="d-flex align-items-center">
-                                            <img src="<?php echo htmlspecialchars($notification['image_url'] ?: 'assets/images/no-image.jpg'); ?>" 
-                                                 class="rounded me-2" 
-                                                 alt="<?php echo htmlspecialchars($notification['item_title']); ?>"
-                                                 style="width: 40px; height: 40px; object-fit: cover;">
-                                            <div class="flex-grow-1">
-                                                <p class="mb-1" style="font-size: 0.9rem;">
-                                                    <?php echo htmlspecialchars($notification['message']); ?>
-                                                    <?php if ($notification['bid_status']): ?>
-                                                        <span class="badge <?php echo $notification['bid_status'] === 'highest' ? 'bg-success' : 'bg-warning text-dark'; ?> ms-1">
-                                                            <?php if ($notification['bid_status'] === 'highest'): ?>
-                                                                <i class="fas fa-trophy"></i> Highest Bidder
-                                                            <?php else: ?>
-                                                                <i class="fas fa-exclamation-circle"></i> Outbid
-                                                            <?php endif; ?>
-                                                        </span>
-                                                    <?php endif; ?>
-                                                </p>
-                                                <small class="text-muted">
-                                                    <i class="far fa-clock me-1"></i>
-                                                    <?php echo date('M d, Y h:i A', strtotime($notification['created_at'])); ?>
-                                                </small>
-                                            </div>
-                                        </div>
-                                    </a>
-                                <?php endwhile; ?>
-                                <div class="dropdown-divider"></div>
-                                <a class="dropdown-item text-center text-primary" href="notifications.php">
-                                    <i class="fas fa-list-ul me-1"></i>View All Notifications
-                                </a>
-                            <?php else: ?>
-                                <div class="dropdown-item text-center text-muted py-3">
-                                    <i class="fas fa-bell-slash me-2"></i>No notifications
-                                </div>
-                            <?php endif; ?>
-                        </div>
-                    </li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fas fa-user me-1"></i><?php echo htmlspecialchars($user['username']); ?>
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
-                        <li><a class="dropdown-item" href="dashboard.php"><i class="fas fa-tachometer-alt me-2"></i>Dashboard</a></li>
-                            <li><a class="dropdown-item" href="profile.php"><i class="fas fa-user-circle me-2"></i>Profile</a></li>
-                            <li><a class="dropdown-item" href="dashboard.php"><i class="fas fa-gavel me-2"></i>My Bids</a></li>
-                            <li><a class="dropdown-item" href="dashboard.php?tab=watchlist"><i class="fas fa-heart me-2"></i>Watchlist</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item text-danger" href="logout.php"><i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
-                        </ul>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </nav>
+    <?php include 'includes/navigation_common.php'; ?>
 
     <div class="container" style="margin-top: 80px;">
         <div class="row">

@@ -14,7 +14,7 @@ $sql = "SELECT f.*, c.name as category_name, u.username as seller_name, u.user_i
         FROM furniture_items f 
         JOIN categories c ON f.category_id = c.category_id 
         JOIN users u ON f.seller_id = u.user_id 
-        WHERE f.item_id = ? AND f.status IN ('active', 'ending_soon')";
+        WHERE f.item_id = ?";
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("i", $item_id);
 $stmt->execute();
@@ -214,78 +214,7 @@ if (isset($_SESSION['user_id'])) {
 </head>
 <body>
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-light bg-light fixed-top">
-        <div class="container">
-            <a class="navbar-brand" href="index.php">
-                <i class="fas fa-couch me-2"></i>Furniture Bidding
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto align-items-center">
-                    <li class="nav-item">
-                        <a class="nav-link" href="index.php">
-                            <i class="fas fa-home me-1"></i>Home
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="furniture_list.php">
-                            <i class="fas fa-list me-1"></i>Browse Furniture
-                        </a>
-                    </li>
-                    <?php if (isset($_SESSION['user_id'])): ?>
-                        <?php
-                        // Check if user has bids or sold items
-                        $check_participation_sql = "SELECT 1 
-                            FROM furniture_items f
-                            LEFT JOIN bids b ON f.item_id = b.item_id
-                            WHERE (b.user_id = ? OR f.seller_id = ?)
-                            AND f.end_time < NOW()
-                            LIMIT 1";
-                        $check_stmt = $conn->prepare($check_participation_sql);
-                        $check_stmt->bind_param("ii", $_SESSION['user_id'], $_SESSION['user_id']);
-                        $check_stmt->execute();
-                        $show_winners_nav = $check_stmt->get_result()->num_rows > 0;
-                        
-                        if ($show_winners_nav):
-                        ?>
-                            <li class="nav-item">
-                                <a class="nav-link" href="auction_winners.php">
-                                    <i class="fas fa-trophy me-1"></i>Winners
-                                </a>
-                            </li>
-                        <?php endif; ?>
-                        <?php include 'includes/notifications.php'; ?>
-                        <li class="nav-item">
-                            <a class="nav-link" href="add_item.php">
-                                <i class="fas fa-plus-circle me-1"></i>Add Item
-                            </a>
-                        </li>
-                        <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fas fa-user me-1"></i><?php echo htmlspecialchars($username); ?>
-                            </a>
-                            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
-                                <li><a class="dropdown-item" href="dashboard.php"><i class="fas fa-tachometer-alt me-2"></i>Dashboard</a></li>
-                                <li><a class="dropdown-item" href="profile.php"><i class="fas fa-user-circle me-2"></i>Profile</a></li>
-                                <li><a class="dropdown-item" href="my_bids.php"><i class="fas fa-gavel me-2"></i>My Bids</a></li>
-                                <li><a class="dropdown-item" href="dashboard.php?tab=watchlist"><i class="fas fa-heart me-2"></i>Watchlist</a></li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item text-danger" href="logout.php"><i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
-                            </ul>
-                        </li>
-                    <?php else: ?>
-                        <li class="nav-item">
-                            <a class="nav-link btn btn-outline-primary btn-sm px-3" href="login.php">
-                                <i class="fas fa-sign-in-alt me-1"></i>Login
-                            </a>
-                        </li>
-                    <?php endif; ?>
-                </ul>
-            </div>
-        </div>
-    </nav>
+    <?php include 'includes/navigation_common.php'; ?>
 
     <div class="container" style="margin-top: 80px;">
         <div class="mb-3">

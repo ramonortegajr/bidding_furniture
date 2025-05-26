@@ -19,6 +19,17 @@
                     </a>
                 </li>
                 <?php if (isset($_SESSION['user_id'])): ?>
+                    <?php
+                    // Check if user has bids or sold items
+                    $show_winners_nav = checkWinnersNavVisibility($conn, $_SESSION['user_id']);
+                    if ($show_winners_nav):
+                    ?>
+                        <li class="nav-item">
+                            <a class="nav-link" href="auction_winners.php">
+                                <i class="fas fa-trophy me-1"></i>Winners
+                            </a>
+                        </li>
+                    <?php endif; ?>
                     <?php include 'notifications.php'; ?>
                     <li class="nav-item">
                         <a class="nav-link" href="add_item.php">

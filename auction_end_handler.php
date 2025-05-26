@@ -23,15 +23,15 @@ $ended_auctions = $conn->query($get_ended_auctions_sql);
 
 while ($auction = $ended_auctions->fetch_assoc()) {
     // Create notification for winner
-    $winner_message = "Congratulations! You won the auction for '{$auction['title']}' with a bid of ₱" . number_format($auction['current_price'], 2);
-    $winner_notification_sql = "INSERT INTO notifications (user_id, item_id, message, created_at) VALUES (?, ?, ?, NOW())";
+    $winner_message = "🎉 Congratulations! You are the winner of the auction for '{$auction['title']}'! Final winning bid: ₱" . number_format($auction['current_price'], 2);
+    $winner_notification_sql = "INSERT INTO notifications (user_id, item_id, message, created_at, bid_status, type) VALUES (?, ?, ?, NOW(), 'highest', 'auction_end')";
     $winner_stmt = $conn->prepare($winner_notification_sql);
     $winner_stmt->bind_param("iis", $auction['winner_id'], $auction['item_id'], $winner_message);
     $winner_stmt->execute();
 
     // Create notification for seller
-    $seller_message = "Your auction for '{$auction['title']}' has ended. Winner: {$auction['winner_name']} with bid of ₱" . number_format($auction['current_price'], 2);
-    $seller_notification_sql = "INSERT INTO notifications (user_id, item_id, message, created_at) VALUES (?, ?, ?, NOW())";
+    $seller_message = "🏁 Your auction for '{$auction['title']}' has ended! Winner: {$auction['winner_name']} with final bid of ₱" . number_format($auction['current_price'], 2);
+    $seller_notification_sql = "INSERT INTO notifications (user_id, item_id, message, created_at, type) VALUES (?, ?, ?, NOW(), 'auction_end')";
     $seller_stmt = $conn->prepare($seller_notification_sql);
     $seller_stmt->bind_param("iis", $auction['seller_id'], $auction['item_id'], $seller_message);
     $seller_stmt->execute();
@@ -54,8 +54,8 @@ while ($auction = $ended_auctions->fetch_assoc()) {
     $other_bidders = $other_bidders_stmt->get_result();
 
     while ($bidder = $other_bidders->fetch_assoc()) {
-        $bidder_message = "The auction for '{$auction['title']}' has ended. Winner: {$auction['winner_name']} with bid of ₱" . number_format($auction['current_price'], 2);
-        $bidder_notification_sql = "INSERT INTO notifications (user_id, item_id, message, created_at) VALUES (?, ?, ?, NOW())";
+        $bidder_message = "🔔 Auction ended for '{$auction['title']}'. The winner is {$auction['winner_name']} with a final bid of ₱" . number_format($auction['current_price'], 2);
+        $bidder_notification_sql = "INSERT INTO notifications (user_id, item_id, message, created_at, bid_status, type) VALUES (?, ?, ?, NOW(), 'outbid', 'auction_end')";
         $bidder_stmt = $conn->prepare($bidder_notification_sql);
         $bidder_stmt->bind_param("iis", $bidder['user_id'], $auction['item_id'], $bidder_message);
         $bidder_stmt->execute();
@@ -79,8 +79,8 @@ $no_bids_auctions = $conn->query($no_bids_sql);
 
 while ($auction = $no_bids_auctions->fetch_assoc()) {
     // Notify seller of no bids
-    $message = "Your auction for '{$auction['title']}' has ended with no bids.";
-    $notification_sql = "INSERT INTO notifications (user_id, item_id, message, created_at) VALUES (?, ?, ?, NOW())";
+    $message = "⚠️ Your auction for '{$auction['title']}' has ended with no bids.";
+    $notification_sql = "INSERT INTO notifications (user_id, item_id, message, created_at, type) VALUES (?, ?, ?, NOW(), 'auction_end')";
     $stmt = $conn->prepare($notification_sql);
     $stmt->bind_param("iis", $auction['seller_id'], $auction['item_id'], $message);
     $stmt->execute();

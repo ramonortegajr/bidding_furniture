@@ -109,99 +109,7 @@ $result = $stmt->get_result();
 </head>
 <body>
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-light bg-light fixed-top">
-        <div class="container">
-            <a class="navbar-brand" href="index.php">
-                <i class="fas fa-couch me-2"></i>Furniture Bidding
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto align-items-center">
-                    <li class="nav-item">
-                        <a class="nav-link" href="index.php">
-                            <i class="fas fa-home me-1"></i>Home
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" href="furniture_list.php">
-                            <i class="fas fa-list me-1"></i>Browse Furniture
-                        </a>
-                    </li>
-                    <?php if (isset($_SESSION['user_id'])): ?>
-                        <!-- Notifications Dropdown -->
-                        <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" id="notificationsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fas fa-bell me-1"></i>Notifications
-                                <?php if ($unread_count > 0): ?>
-                                    <span class="badge bg-danger notification-badge"><?php echo $unread_count; ?></span>
-                                <?php endif; ?>
-                            </a>
-                            <div class="dropdown-menu dropdown-menu-end notification-dropdown" aria-labelledby="notificationsDropdown">
-                                <div class="dropdown-header d-flex justify-content-between align-items-center">
-                                    <span><i class="fas fa-bell me-2"></i>Notifications</span>
-                                    <?php if ($unread_count > 0): ?>
-                                        <span class="badge bg-danger"><?php echo $unread_count; ?> new</span>
-                                    <?php endif; ?>
-                                </div>
-                                <?php if ($notifications && $notifications->num_rows > 0): ?>
-                                    <?php while ($notification = $notifications->fetch_assoc()): ?>
-                                        <a class="dropdown-item <?php echo !$notification['is_read'] ? 'unread' : ''; ?>" 
-                                           href="item.php?id=<?php echo $notification['item_id']; ?>"
-                                           onclick="markNotificationRead(<?php echo $notification['notification_id']; ?>)">
-                                            <div class="d-flex align-items-center">
-                                                <img src="<?php echo htmlspecialchars($notification['image_url'] ?: 'assets/images/no-image.jpg'); ?>" 
-                                                     class="rounded me-2" 
-                                                     alt="<?php echo htmlspecialchars($notification['item_title']); ?>"
-                                                     style="width: 40px; height: 40px; object-fit: cover;">
-                                                <div class="flex-grow-1">
-                                                    <p class="mb-1" style="font-size: 0.9rem;">
-                                                        <?php echo htmlspecialchars($notification['message']); ?>
-                                                    </p>
-                                                    <small class="text-muted">
-                                                        <i class="far fa-clock me-1"></i>
-                                                        <?php echo date('M d, Y h:i A', strtotime($notification['created_at'])); ?>
-                                                    </small>
-                                                </div>
-                                            </div>
-                                        </a>
-                                    <?php endwhile; ?>
-                                    <div class="dropdown-divider"></div>
-                                    <a class="dropdown-item text-center text-primary" href="notifications.php">
-                                        <i class="fas fa-list-ul me-1"></i>View All Notifications
-                                    </a>
-                                <?php else: ?>
-                                    <div class="dropdown-item text-center text-muted py-3">
-                                        <i class="fas fa-bell-slash me-2"></i>No notifications
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                        </li>
-                        <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fas fa-user me-1"></i><?php echo htmlspecialchars($username); ?>
-                            </a>
-                            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
-                            <li><a class="dropdown-item" href="dashboard.php"><i class="fas fa-tachometer-alt me-2"></i>Dashboard</a></li>
-                                <li><a class="dropdown-item" href="profile.php"><i class="fas fa-user-circle me-2"></i>Profile</a></li>
-                                <li><a class="dropdown-item" href="my_bids.php"><i class="fas fa-gavel me-2"></i>My Bids</a></li>
-                                <li><a class="dropdown-item" href="dashboard.php?tab=watchlist"><i class="fas fa-heart me-2"></i>Watchlist</a></li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item text-danger" href="logout.php"><i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
-                            </ul>
-                        </li>
-                    <?php else: ?>
-                        <li class="nav-item">
-                            <a class="nav-link btn btn-outline-primary btn-sm px-3" href="login.php">
-                                <i class="fas fa-sign-in-alt me-1"></i>Login
-                            </a>
-                        </li>
-                    <?php endif; ?>
-                </ul>
-            </div>
-        </div>
-    </nav>
+    <?php include 'includes/navigation_common.php'; ?>
 
     <div class="container" style="margin-top: 80px;">
         <!-- Filter Section -->
@@ -227,8 +135,9 @@ $result = $stmt->get_result();
                     <select name="condition" class="form-select">
                         <option value="">Any</option>
                         <option value="New" <?php echo (isset($_GET['condition']) && $_GET['condition'] == 'New') ? 'selected' : ''; ?>>New</option>
-                        <option value="Used" <?php echo (isset($_GET['condition']) && $_GET['condition'] == 'Used') ? 'selected' : ''; ?>>Used</option>
-                        <option value="Refurbished" <?php echo (isset($_GET['condition']) && $_GET['condition'] == 'Refurbished') ? 'selected' : ''; ?>>Refurbished</option>
+                        <option value="Like New" <?php echo (isset($_GET['condition']) && $_GET['condition'] == 'Like New') ? 'selected' : ''; ?>>Like New</option>
+                        <option value="Good" <?php echo (isset($_GET['condition']) && $_GET['condition'] == 'Good') ? 'selected' : ''; ?>>Good</option>
+                        <option value="Fair" <?php echo (isset($_GET['condition']) && $_GET['condition'] == 'Fair') ? 'selected' : ''; ?>>Fair</option>
                     </select>
                 </div>
                 <div class="col-md-2">
