@@ -196,6 +196,10 @@ while ($bid = $bids_result->fetch_assoc()) {
                                                                class="btn btn-success btn-sm">
                                                                 <i class="fas fa-edit me-1"></i>Update Bid
                                                             </a>
+                                                            <a href="chat.php?item_id=<?php echo $bid['item_id']; ?>&user_id=<?php echo $bid['seller_id']; ?>" 
+                                                               class="btn btn-info btn-sm">
+                                                                <i class="fas fa-comments me-1"></i>Chat with Seller
+                                                            </a>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -264,10 +268,23 @@ while ($bid = $bids_result->fetch_assoc()) {
                                                             </small>
                                                         </p>
 
-                                                        <!-- Action Button -->
-                                                        <a href="item.php?id=<?php echo $bid['item_id']; ?>" class="btn btn-primary btn-sm">
-                                                            <i class="fas fa-info-circle me-1"></i>View Details
-                                                        </a>
+                                                        <!-- Action Buttons for Ended Bids -->
+                                                        <div class="mt-auto">
+                                                            <a href="item.php?id=<?php echo $bid['item_id']; ?>" class="btn btn-primary btn-sm">
+                                                                <i class="fas fa-eye me-1"></i>View Item
+                                                            </a>
+                                                            <?php if ($bid['is_highest_bidder']): ?>
+                                                                <a href="chat.php?item_id=<?php echo $bid['item_id']; ?>&user_id=<?php echo $bid['seller_id']; ?>" 
+                                                                   class="btn btn-success btn-sm">
+                                                                    <i class="fas fa-comments me-1"></i>Discuss Payment
+                                                                </a>
+                                                            <?php else: ?>
+                                                                <a href="chat.php?item_id=<?php echo $bid['item_id']; ?>&user_id=<?php echo $bid['seller_id']; ?>" 
+                                                                   class="btn btn-info btn-sm">
+                                                                    <i class="fas fa-comments me-1"></i>Chat with Seller
+                                                                </a>
+                                                            <?php endif; ?>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>

@@ -38,7 +38,7 @@ if (isset($_SESSION['user_id'])) {
 
 // If user is logged in, only show relevant auctions for ended view
 if (isset($_SESSION['user_id']) && $view_type === 'ended') {
-    $where_conditions[] = "(b.user_id = ? OR f.seller_id = ?)";
+    $where_conditions[] = "(EXISTS (SELECT 1 FROM bids WHERE bids.item_id = f.item_id AND bids.user_id = ?) OR f.seller_id = ?)";
     $params[] = $_SESSION['user_id'];
     $params[] = $_SESSION['user_id'];
     $types .= "ii";
@@ -81,7 +81,7 @@ if (isset($_GET['sort'])) {
     }
 }
 
-// Get auctions based on view type
+// Get auctions based on view type with user's bid information
 $winners_sql = "SELECT 
     f.item_id,
     f.title,
@@ -93,14 +93,29 @@ $winners_sql = "SELECT
     w.username as winner_name,
     s.username as seller_name,
     b.bid_time as winning_bid_time,
-    (SELECT COUNT(*) FROM bids WHERE item_id = f.item_id) as bid_count
+    (SELECT COUNT(*) FROM bids WHERE item_id = f.item_id) as bid_count,
+    ub.bid_amount as user_bid_amount,
+    ub.bid_time as user_bid_time,
+    CASE 
+        WHEN w.user_id = ? THEN 'won'
+        WHEN ub.bid_amount IS NOT NULL THEN 'lost'
+        WHEN f.seller_id = ? THEN 'sold'
+        ELSE 'other'
+    END as auction_status
     FROM furniture_items f
     JOIN users s ON f.seller_id = s.user_id
     LEFT JOIN bids b ON f.item_id = b.item_id AND b.bid_amount = f.current_price
     LEFT JOIN users w ON b.user_id = w.user_id
+    LEFT JOIN bids ub ON f.item_id = ub.item_id AND ub.user_id = ?
     WHERE " . implode(" AND ", $where_conditions) . "
     GROUP BY f.item_id
     ORDER BY " . $sort_order;
+
+// Add the user_id three times to the params array for the status check and user bid join
+if (isset($_SESSION['user_id'])) {
+    array_unshift($params, $_SESSION['user_id'], $_SESSION['user_id'], $_SESSION['user_id']);
+    $types = "iii" . $types;
+}
 
 $winners_stmt = $conn->prepare($winners_sql);
 if (!empty($params)) {
@@ -148,10 +163,38 @@ if (isset($_SESSION['user_id'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Auction Winners - Furniture Bidding System</title>
+    <title>Auction Results - Furniture Bidding System</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="assets/css/style.css">
+    <style>
+        .bid-status {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-weight: bold;
+        }
+        .status-won {
+            background-color: #198754;
+            color: white;
+        }
+        .status-lost {
+            background-color: #dc3545;
+            color: white;
+        }
+        .status-sold {
+            background-color: #0dcaf0;
+            color: white;
+        }
+        .user-bid {
+            background-color: rgba(0,0,0,0.05);
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+    </style>
 </head>
 <body>
     <!-- Navigation -->
@@ -162,14 +205,14 @@ if (isset($_SESSION['user_id'])) {
         <nav aria-label="breadcrumb" class="mb-4">
             <ol class="breadcrumb">
                 <li class="breadcrumb-item"><a href="index.php">Home</a></li>
-                <li class="breadcrumb-item active"><?php echo $view_type === 'ended' ? 'Ended' : 'Active'; ?> Auctions</li>
+                <li class="breadcrumb-item active"><?php echo $view_type === 'ended' ? 'Auction Results' : 'Active Auctions'; ?></li>
             </ol>
         </nav>
 
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2>
                 <?php if ($view_type === 'ended'): ?>
-                    <i class="fas fa-trophy me-2 text-warning"></i>Ended Auctions
+                    <i class="fas fa-gavel me-2 text-primary"></i>Auction Results
                 <?php else: ?>
                     <i class="fas fa-gavel me-2 text-primary"></i>Active Auctions
                 <?php endif; ?>
@@ -179,7 +222,7 @@ if (isset($_SESSION['user_id'])) {
                     <?php if ($view_type === 'ended'): ?>
                         <i class="fas fa-gavel me-1"></i>View Active Auctions
                     <?php else: ?>
-                        <i class="fas fa-trophy me-1"></i>View Ended Auctions
+                        <i class="fas fa-history me-1"></i>View Auction Results
                     <?php endif; ?>
                 </a>
                 <?php if (isset($_SESSION['user_id'])): ?>
@@ -194,21 +237,14 @@ if (isset($_SESSION['user_id'])) {
         <div class="card mb-4">
             <div class="card-body">
                 <form method="GET" class="row g-3">
+                    <input type="hidden" name="view" value="<?php echo $view_type; ?>">
                     <div class="col-md-4">
                         <label class="form-label">Search</label>
                         <input type="text" name="search" class="form-control" placeholder="Search by title or winner..." 
                                value="<?php echo isset($_GET['search']) ? htmlspecialchars($_GET['search']) : ''; ?>">
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label">Sort By</label>
-                        <select name="sort" class="form-select">
-                            <option value="recent" <?php echo (!isset($_GET['sort']) || $_GET['sort'] == 'recent') ? 'selected' : ''; ?>>Most Recent</option>
-                            <option value="price_high" <?php echo (isset($_GET['sort']) && $_GET['sort'] == 'price_high') ? 'selected' : ''; ?>>Highest Price</option>
-                            <option value="price_low" <?php echo (isset($_GET['sort']) && $_GET['sort'] == 'price_low') ? 'selected' : ''; ?>>Lowest Price</option>
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label">Time Frame</label>
+                        <label class="form-label">Timeframe</label>
                         <select name="timeframe" class="form-select">
                             <option value="all" <?php echo (!isset($_GET['timeframe']) || $_GET['timeframe'] == 'all') ? 'selected' : ''; ?>>All Time</option>
                             <option value="today" <?php echo (isset($_GET['timeframe']) && $_GET['timeframe'] == 'today') ? 'selected' : ''; ?>>Today</option>
@@ -216,94 +252,107 @@ if (isset($_SESSION['user_id'])) {
                             <option value="month" <?php echo (isset($_GET['timeframe']) && $_GET['timeframe'] == 'month') ? 'selected' : ''; ?>>This Month</option>
                         </select>
                     </div>
-                    <div class="col-md-2 d-flex align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label">Sort By</label>
+                        <select name="sort" class="form-select">
+                            <option value="latest" <?php echo (!isset($_GET['sort']) || $_GET['sort'] == 'latest') ? 'selected' : ''; ?>>Latest Ended</option>
+                            <option value="price_high" <?php echo (isset($_GET['sort']) && $_GET['sort'] == 'price_high') ? 'selected' : ''; ?>>Price (High to Low)</option>
+                            <option value="price_low" <?php echo (isset($_GET['sort']) && $_GET['sort'] == 'price_low') ? 'selected' : ''; ?>>Price (Low to High)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">&nbsp;</label>
                         <button type="submit" class="btn btn-primary w-100">
-                            <i class="fas fa-search me-1"></i>Filter
+                            <i class="fas fa-filter me-1"></i>Apply Filters
                         </button>
                     </div>
                 </form>
             </div>
         </div>
 
-        <!-- Results Section -->
-        <div class="row">
-            <?php if ($winners_result && $winners_result->num_rows > 0): ?>
+        <!-- Results Grid -->
+        <div class="row row-cols-1 row-cols-md-3 g-4 mb-4">
+            <?php if ($winners_result->num_rows > 0): ?>
                 <?php while ($item = $winners_result->fetch_assoc()): ?>
-                    <div class="col-md-6 mb-4">
-                        <div class="card">
-                            <div class="row g-0">
-                                <div class="col-md-4">
-                                    <?php if ($item['image_url']): ?>
-                                        <img src="<?php echo htmlspecialchars($item['image_url']); ?>" 
-                                             class="img-fluid rounded-start" 
-                                             alt="<?php echo htmlspecialchars($item['title']); ?>"
-                                             style="height: 200px; object-fit: cover;">
-                                    <?php else: ?>
-                                        <img src="assets/images/no-image.jpg" 
-                                             class="img-fluid rounded-start" 
-                                             alt="No image available"
-                                             style="height: 200px; object-fit: cover;">
+                    <div class="col">
+                        <div class="card h-100 position-relative">
+                            <?php if ($view_type === 'ended'): ?>
+                                <?php
+                                $status_class = '';
+                                $status_text = '';
+                                switch ($item['auction_status']) {
+                                    case 'won':
+                                        $status_class = 'status-won';
+                                        $status_text = 'Won!';
+                                        break;
+                                    case 'lost':
+                                        $status_class = 'status-lost';
+                                        $status_text = 'Lost';
+                                        break;
+                                    case 'sold':
+                                        $status_class = 'status-sold';
+                                        $status_text = 'Sold';
+                                        break;
+                                }
+                                if ($status_text): ?>
+                                    <div class="bid-status <?php echo $status_class; ?>">
+                                        <?php echo $status_text; ?>
+                                    </div>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                            
+                            <img src="<?php echo $item['image_url'] ? htmlspecialchars($item['image_url']) : 'assets/images/no-image.jpg'; ?>" 
+                                 class="card-img-top" alt="<?php echo htmlspecialchars($item['title']); ?>"
+                                 style="height: 200px; object-fit: cover;">
+                            
+                            <div class="card-body">
+                                <h5 class="card-title"><?php echo htmlspecialchars($item['title']); ?></h5>
+                                <p class="card-text">
+                                    <small class="text-muted">
+                                        <i class="fas fa-user me-1"></i>Seller: <?php echo htmlspecialchars($item['seller_name']); ?>
+                                    </small>
+                                </p>
+                                
+                                <?php if ($view_type === 'ended'): ?>
+                                    <div class="mb-2">
+                                        <strong>Final Price:</strong> ₱<?php echo number_format($item['winning_bid'], 2); ?>
+                                    </div>
+                                    <?php if ($item['winner_name']): ?>
+                                        <div class="mb-2">
+                                            <strong>Winner:</strong> <?php echo htmlspecialchars($item['winner_name']); ?>
+                                        </div>
                                     <?php endif; ?>
-                                </div>
-                                <div class="col-md-8">
-                                    <div class="card-body">
-                                        <h5 class="card-title"><?php echo htmlspecialchars($item['title']); ?></h5>
-                                        <?php if ($view_type === 'ended'): ?>
-                                            <div class="mb-2">
-                                                <?php if ($item['winner_name']): ?>
-                                                    <span class="badge bg-success">
-                                                        <i class="fas fa-trophy me-1"></i>Winner: <?php echo htmlspecialchars($item['winner_name']); ?>
-                                                    </span>
-                                                <?php else: ?>
-                                                    <span class="badge bg-secondary">
-                                                        <i class="fas fa-times me-1"></i>No Winner
-                                                    </span>
-                                                <?php endif; ?>
-                                            </div>
-                                        <?php else: ?>
-                                            <div class="mb-2">
-                                                <span class="badge bg-primary">
-                                                    <i class="fas fa-gavel me-1"></i><?php echo $item['bid_count']; ?> Bid<?php echo $item['bid_count'] != 1 ? 's' : ''; ?>
-                                                </span>
-                                                <span class="badge bg-info ms-1">
-                                                    <i class="fas fa-clock me-1"></i>
-                                                    <?php
-                                                    $end_time = strtotime($item['end_time']);
-                                                    $now = time();
-                                                    $time_left = $end_time - $now;
-                                                    $days = floor($time_left / (60 * 60 * 24));
-                                                    $hours = floor(($time_left % (60 * 60 * 24)) / (60 * 60));
-                                                    echo $days > 0 ? $days . "d " . $hours . "h left" : $hours . "h left";
-                                                    ?>
-                                                </span>
-                                            </div>
-                                        <?php endif; ?>
-                                        <p class="card-text">
-                                            <small class="text-muted">Seller: <?php echo htmlspecialchars($item['seller_name']); ?></small><br>
-                                            <?php if ($view_type === 'ended'): ?>
-                                                <strong class="text-success">Final Price: ₱<?php echo number_format($item['winning_bid'], 2); ?></strong>
-                                            <?php else: ?>
-                                                <strong class="text-primary">Current Bid: ₱<?php echo number_format($item['winning_bid'], 2); ?></strong><br>
-                                                <small class="text-muted">Starting Price: ₱<?php echo number_format($item['starting_price'], 2); ?></small>
-                                            <?php endif; ?>
+                                    <?php if ($item['user_bid_amount']): ?>
+                                        <div class="user-bid">
+                                            <strong>Your Bid:</strong> ₱<?php echo number_format($item['user_bid_amount'], 2); ?>
                                             <br>
                                             <small class="text-muted">
-                                                <?php echo $view_type === 'ended' ? 'Ended: ' : 'Ends: '; ?>
-                                                <?php echo date('M d, Y h:i A', strtotime($item['end_time'])); ?>
+                                                Placed on <?php echo date('M d, Y h:i A', strtotime($item['user_bid_time'])); ?>
                                             </small>
-                                        </p>
-                                        <div class="mt-2">
-                                            <a href="item.php?id=<?php echo $item['item_id']; ?>" class="btn btn-primary btn-sm">
-                                                <i class="fas fa-info-circle me-1"></i>View Details
-                                            </a>
-                                            <?php if ($view_type === 'active' && isset($_SESSION['user_id']) && $_SESSION['user_id'] != $item['seller_id']): ?>
-                                                <a href="place_bid.php?id=<?php echo $item['item_id']; ?>" class="btn btn-success btn-sm">
-                                                    <i class="fas fa-gavel me-1"></i>Place Bid
-                                                </a>
-                                            <?php endif; ?>
                                         </div>
+                                    <?php endif; ?>
+                                <?php else: ?>
+                                    <div class="mb-2">
+                                        <strong>Current Bid:</strong> ₱<?php echo number_format($item['winning_bid'], 2); ?>
                                     </div>
+                                <?php endif; ?>
+                                
+                                <div class="mt-2">
+                                    <small class="text-muted">
+                                        <i class="fas fa-gavel me-1"></i><?php echo $item['bid_count']; ?> bid(s)
+                                    </small>
+                                    <br>
+                                    <small class="text-muted">
+                                        <i class="fas fa-clock me-1"></i>
+                                        <?php echo $view_type === 'ended' ? 'Ended' : 'Ends'; ?> 
+                                        <?php echo date('M d, Y h:i A', strtotime($item['end_time'])); ?>
+                                    </small>
                                 </div>
+                            </div>
+                            <div class="card-footer bg-white border-top-0">
+                                <a href="item.php?id=<?php echo $item['item_id']; ?>" class="btn btn-outline-primary w-100">
+                                    <i class="fas fa-info-circle me-1"></i>View Details
+                                </a>
                             </div>
                         </div>
                     </div>
@@ -311,7 +360,12 @@ if (isset($_SESSION['user_id'])) {
             <?php else: ?>
                 <div class="col-12">
                     <div class="alert alert-info text-center">
-                        <i class="fas fa-info-circle me-2"></i>No <?php echo $view_type === 'ended' ? 'completed' : 'active'; ?> auctions found
+                        <i class="fas fa-info-circle me-2"></i>
+                        <?php if ($view_type === 'ended'): ?>
+                            No ended auctions found.
+                        <?php else: ?>
+                            No active auctions found.
+                        <?php endif; ?>
                     </div>
                 </div>
             <?php endif; ?>
@@ -319,6 +373,5 @@ if (isset($_SESSION['user_id'])) {
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 </body>
 </html> 

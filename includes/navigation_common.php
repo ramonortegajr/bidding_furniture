@@ -1,13 +1,11 @@
 <?php
-require_once 'config/database.php';
-require_once 'includes/nav_helpers.php';
+require_once dirname(__DIR__) . '/config/database.php';
+require_once __DIR__ . '/nav_helpers.php';
 
-// Check if user has bids or sold items
-$show_winners_nav = false;
-if (isset($_SESSION['user_id'])) {
-    $show_winners_nav = checkWinnersNavVisibility($conn, $_SESSION['user_id']);
-}
+// Get unread chats count
+$unread_chats = isset($_SESSION['user_id']) ? getUnreadChatsCount($conn, $_SESSION['user_id']) : 0;
 ?>
+
 <nav class="navbar navbar-expand-lg navbar-light bg-light fixed-top">
     <div class="container">
         <a class="navbar-brand" href="index.php">
@@ -29,35 +27,33 @@ if (isset($_SESSION['user_id'])) {
                     </a>
                 </li>
                 <?php if (isset($_SESSION['user_id'])): ?>
-                    <?php if ($show_winners_nav['show']): ?>
-                        <li class="nav-item">
-                            <a class="nav-link position-relative" href="auction_winners.php">
-                                <i class="fas fa-trophy me-1"></i>Winners
-                                <?php if ($show_winners_nav['new_count'] > 0): ?>
-                                    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-                                        <?php echo $show_winners_nav['new_count']; ?>
-                                        <span class="visually-hidden">new ended auctions</span>
-                                    </span>
-                                <?php endif; ?>
-                            </a>
-                        </li>
-                    <?php endif; ?>
-                    <?php include 'includes/notifications.php'; ?>
-                    <?php 
-                    // Get the current page name
-                    $current_page = basename($_SERVER['PHP_SELF']);
-                    // Only show Add Item link if not on index.php
-                    if ($current_page !== 'index.php'): 
-                    ?>
-                        <li class="nav-item">
-                            <a class="nav-link" href="add_item.php">
-                                <i class="fas fa-plus-circle me-1"></i>Add Item
-                            </a>
-                        </li>
-                    <?php endif; ?>
+                    <li class="nav-item">
+                        <a class="nav-link" href="dashboard.php">
+                            <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="dashboard.php?tab=listings">
+                            <i class="fas fa-box me-1"></i>My Listings
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="my_bids.php">
+                            <i class="fas fa-gavel me-1"></i>My Bids
+                        </a>
+                    </li>
+                    <li class="nav-item position-relative">
+                        <a class="nav-link" href="chats.php">
+                            <i class="fas fa-comments me-1"></i>Chats
+                            <span class="chat-badge position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="display: <?php echo $unread_chats > 0 ? 'flex' : 'none'; ?>">
+                                <?php echo $unread_chats; ?>
+                                <span class="visually-hidden">unread messages</span>
+                            </span>
+                        </a>
+                    </li>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fas fa-user me-1"></i><?php echo htmlspecialchars($username); ?>
+                            <i class="fas fa-user me-1"></i><?php echo htmlspecialchars($_SESSION['username']); ?>
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
                             <li><a class="dropdown-item" href="dashboard.php"><i class="fas fa-tachometer-alt me-2"></i>Dashboard</a></li>
@@ -80,8 +76,33 @@ if (isset($_SESSION['user_id'])) {
     </div>
 </nav>
 
-<!-- Add JavaScript for checking ended auctions -->
+<!-- Add JavaScript for checking notifications -->
 <script>
+    // Function to update chat badge
+    function updateChatBadge() {
+        const chatBadge = document.querySelector('.chat-badge');
+        if (chatBadge) {
+            fetch('check_unread_chats.php')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.unread_count > 0) {
+                        chatBadge.textContent = data.unread_count;
+                        chatBadge.style.display = 'flex';
+                    } else {
+                        chatBadge.style.display = 'none';
+                    }
+                })
+                .catch(error => console.error('Error checking unread chats:', error));
+        }
+    }
+
+    // Check for new messages every 5 seconds
+    setInterval(updateChatBadge, 5000);
+
+    // Initial check for messages
+    updateChatBadge();
+
+    // Check for ended auctions
     function checkEndedAuctions() {
         if (document.querySelector('.nav-link[href="auction_winners.php"]')) {
             fetch('check_ended_auctions.php')
