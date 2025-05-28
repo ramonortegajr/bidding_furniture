@@ -4,6 +4,16 @@ require_once __DIR__ . '/nav_helpers.php';
 
 // Get unread chats count
 $unread_chats = isset($_SESSION['user_id']) ? getUnreadChatsCount($conn, $_SESSION['user_id']) : 0;
+
+// Get unread notifications count
+$unread_notifications = 0;
+if (isset($_SESSION['user_id'])) {
+    $notifications_sql = "SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0";
+    $notifications_stmt = $conn->prepare($notifications_sql);
+    $notifications_stmt->bind_param("i", $_SESSION['user_id']);
+    $notifications_stmt->execute();
+    $unread_notifications = $notifications_stmt->get_result()->fetch_assoc()['count'];
+}
 ?>
 
 <nav class="navbar navbar-expand-lg navbar-light bg-light fixed-top">
@@ -49,6 +59,17 @@ $unread_chats = isset($_SESSION['user_id']) ? getUnreadChatsCount($conn, $_SESSI
                                 <?php echo $unread_chats; ?>
                                 <span class="visually-hidden">unread messages</span>
                             </span>
+                        </a>
+                    </li>
+                    <!-- Add Notifications Nav Item -->
+                    <li class="nav-item">
+                        <a class="nav-link position-relative" href="notifications.php" id="notificationsDropdown">
+                            <i class="fas fa-bell me-1"></i>Notifications
+                            <?php if (isset($unread_notifications) && $unread_notifications > 0): ?>
+                            <span class="notification-badge position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                                <?php echo $unread_notifications; ?>
+                            </span>
+                            <?php endif; ?>
                         </a>
                     </li>
                     <li class="nav-item dropdown">
@@ -101,6 +122,34 @@ $unread_chats = isset($_SESSION['user_id']) ? getUnreadChatsCount($conn, $_SESSI
 
     // Initial check for messages
     updateChatBadge();
+
+    // Function to update notification badge
+    function updateNotificationBadge() {
+        fetch('get_notifications.php')
+            .then(response => response.json())
+            .then(data => {
+                const badge = document.querySelector('.notification-badge');
+                if (data.unread_count > 0) {
+                    if (badge) {
+                        badge.textContent = data.unread_count;
+                        badge.style.display = 'block';
+                    } else {
+                        const newBadge = document.createElement('span');
+                        newBadge.className = 'notification-badge position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger';
+                        newBadge.textContent = data.unread_count;
+                        document.getElementById('notificationsDropdown').appendChild(newBadge);
+                    }
+                } else if (badge) {
+                    badge.style.display = 'none';
+                }
+            })
+            .catch(error => console.error('Error checking notifications:', error));
+    }
+
+    // Check for new notifications every 30 seconds
+    setInterval(updateNotificationBadge, 30000);
+    // Initial check for notifications
+    updateNotificationBadge();
 
     // Check for ended auctions
     function checkEndedAuctions() {

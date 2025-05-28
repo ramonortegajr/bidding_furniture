@@ -175,12 +175,21 @@ $stmt->execute();
                         unreadDot.remove();
                     }
 
-                    // Update notification badge in navbar if it exists
+                    // Update notification badge in navbar
                     const navBadge = document.querySelector('.notification-badge');
-                    if (navBadge && data.unread_count > 0) {
-                        navBadge.textContent = data.unread_count;
-                    } else if (navBadge) {
-                        navBadge.remove();
+                    if (data.unread_count > 0) {
+                        if (navBadge) {
+                            navBadge.textContent = data.unread_count;
+                        } else {
+                            const newBadge = document.createElement('span');
+                            newBadge.className = 'badge bg-danger notification-badge';
+                            newBadge.textContent = data.unread_count;
+                            document.getElementById('notificationsDropdown').appendChild(newBadge);
+                        }
+                    } else {
+                        if (navBadge) {
+                            navBadge.style.display = 'none';
+                        }
                     }
                 }
             })
